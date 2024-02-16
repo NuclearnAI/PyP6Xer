@@ -28,6 +28,10 @@ from xerparser import *
 from typing import List
 from xerparser.model.classes.data import Data
 from xerparser.write import writeXER
+import sys
+
+csv.field_size_limit(sys.maxsize)
+
 
 class Reader:
 
@@ -317,16 +321,25 @@ class Reader:
         self._data.resources = self._resources
         self._data.taskresource = self._activityresources
         self._data.taskactvcodes = self._activitycodes
+
+
         with codecs.open(filename, encoding='utf-8', errors='ignore') as tsvfile:
             stream = csv.reader(tsvfile, delimiter='\t')
             for row in stream:
-                if row[0] =="%T":
-                    current_table = row[1]
-                elif row[0] == "%F":
-                    current_headers = [r.strip() for r in row[1:]]
-                elif row[0] == "%R":
-                    zipped_record = dict(zip(current_headers, row[1:]))
-                    self.create_object(current_table, zipped_record)
+                try:
+                    if not row:  # Skip empty rows
+                        Warning("Empty row detected on row %s", stream.line_num)
+                        continue
+                    if row[0] =="%T":
+                        current_table = row[1]
+                    elif row[0] == "%F":
+                        current_headers = [r.strip() for r in row[1:]]
+                    elif row[0] == "%R":
+                        zipped_record = dict(zip(current_headers, row[1:]))
+                        self.create_object(current_table, zipped_record)
+                except Exception as e:
+                    print("Error reading line %s: %s", stream.line_num, e)
+                    raise e
 
         # for line in content:
         #     line_lst = line.split('\t')
