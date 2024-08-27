@@ -29,6 +29,9 @@ from typing import List
 from xerparser.model.classes.data import Data
 from xerparser.write import writeXER
 import sys
+from typing import Union
+import io
+import re
 
 csv.field_size_limit(sys.maxsize)
 
@@ -282,9 +285,7 @@ class Reader:
     def nonworks(self) -> List[NonWork]:
         return self._nonworks
 
-    def __init__(self, filename):
-        file = open(filename, 'r')
-        self.file = filename
+    def __init__(self, file_or_stream: Union[str, bytes]):
         self._tasks = Tasks()
         self._predecessors = Predecessors()
         self._projects = Projects()
@@ -322,31 +323,51 @@ class Reader:
         self._data.taskresource = self._activityresources
         self._data.taskactvcodes = self._activitycodes
 
+        # Determine if input is a file path (str) or a byte stream (bytes)
+        if isinstance(file_or_stream, str):
+            # Treat as a file path, open with universal-newline mode
+            with codecs.open(file_or_stream, encoding='utf-8', errors='ignore') as tsvfile:
+                self._parse_stream(tsvfile)
+        elif isinstance(file_or_stream, bytes):
+            # Attempt to decode with UTF-8 first
+            try:
+                decoded_stream = file_or_stream.decode('utf-8', errors='ignore')
+            except UnicodeDecodeError:
+                # If UTF-8 fails, try a different encoding like ISO-8859-1 or fallback to ASCII
+                raise ValueError("Invalid input: could not decode byte stream")
+            # use newline=None to handle new-line characters within fields and ensure files from linux and windows are parsed correctly
+            text_stream = io.StringIO(decoded_stream, newline=None)
+            self._parse_stream(text_stream)
+        else:
+            raise ValueError("Invalid input: must be a file path or a byte stream")
+        
+    def _parse_stream(self, text_stream):
+        # Use a custom quote handling method and handle new-line characters manually
+        reader = csv.reader(text_stream, delimiter='\t')
+        for row in reader:
+            try:
+                if not row:  # Skip empty rows
+                    print("Warning: Empty row detected on row %s" % reader.line_num)
+                    continue
+                if row[0] == "%T":
+                    self.current_table = row[1]
+                elif row[0] == "%F":
+                    self.current_headers = [r.strip() for r in row[1:]]
+                elif row[0] == "%R":
+                    zipped_record = dict(zip(self.current_headers, row[1:]))
+                    self.create_object(self.current_table, zipped_record)
+            except Exception as e:
+                print("Error reading line %s: %s" % (reader.line_num, e))
+                raise e
 
-        with codecs.open(filename, encoding='utf-8', errors='ignore') as tsvfile:
-            stream = csv.reader(tsvfile, delimiter='\t')
-            for row in stream:
-                try:
-                    if not row:  # Skip empty rows
-                        Warning("Empty row detected on row %s", stream.line_num)
-                        continue
-                    if row[0] =="%T":
-                        current_table = row[1]
-                    elif row[0] == "%F":
-                        current_headers = [r.strip() for r in row[1:]]
-                    elif row[0] == "%R":
-                        zipped_record = dict(zip(current_headers, row[1:]))
-                        self.create_object(current_table, zipped_record)
-                except Exception as e:
-                    print("Error reading line %s: %s", stream.line_num, e)
-                    raise e
-
-        # for line in content:
-        #     line_lst = line.split('\t')
-        #     if line_lst[0] == "%T":
-        #         current_table = line_lst[1]
-        #     elif line_lst[0] == "%R":
-        #         self.create_object(current_table, line_lst[1:])
+    def _preprocess_stream(self, stream_content):
+        """
+        Preprocess the stream content to handle new-line characters within fields.
+        Replace new-lines within fields with a space or another character.
+        """
+        # Replace new-line characters within fields with a space
+        # This regex looks for new-lines that are not preceded or followed by another new-line (which would indicate a legitimate new line)
+        return re.sub(r'(?<!\r)\n(?!\r)', ' ', stream_content)
 
     def get_num_lines(self, file_path):
         fp = open(file_path, "r+")
