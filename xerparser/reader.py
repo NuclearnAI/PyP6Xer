@@ -360,15 +360,6 @@ class Reader:
                 print("Error reading line %s: %s" % (reader.line_num, e))
                 raise e
 
-    def _preprocess_stream(self, stream_content):
-        """
-        Preprocess the stream content to handle new-line characters within fields.
-        Replace new-lines within fields with a space or another character.
-        """
-        # Replace new-line characters within fields with a space
-        # This regex looks for new-lines that are not preceded or followed by another new-line (which would indicate a legitimate new line)
-        return re.sub(r'(?<!\r)\n(?!\r)', ' ', stream_content)
-
     def get_num_lines(self, file_path):
         fp = open(file_path, "r+")
         buf = mmap.mmap(fp.fileno(), 0)
