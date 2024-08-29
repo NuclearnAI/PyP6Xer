@@ -285,7 +285,7 @@ class Reader:
     def nonworks(self) -> List[NonWork]:
         return self._nonworks
 
-    def __init__(self, file_or_stream: Union[str, bytes]):
+    def __init__(self, filename_or_stream: Union[str, bytes]):
         self._tasks = Tasks()
         self._predecessors = Predecessors()
         self._projects = Projects()
@@ -324,14 +324,14 @@ class Reader:
         self._data.taskactvcodes = self._activitycodes
 
         # Determine if input is a file path (str) or a byte stream (bytes)
-        if isinstance(file_or_stream, str):
+        if isinstance(filename_or_stream, str):
             # Treat as a file path, open with universal-newline mode
-            with codecs.open(file_or_stream, encoding='utf-8', errors='ignore') as tsvfile:
+            with codecs.open(filename_or_stream, encoding='utf-8', errors='ignore') as tsvfile:
                 self._parse_stream(tsvfile)
-        elif isinstance(file_or_stream, bytes):
+        elif isinstance(filename_or_stream, bytes):
             # Attempt to decode with UTF-8 first
             try:
-                decoded_stream = file_or_stream.decode('utf-8', errors='ignore')
+                decoded_stream = filename_or_stream.decode('utf-8', errors='ignore')
             except UnicodeDecodeError:
                 # If UTF-8 fails, try a different encoding like ISO-8859-1 or fallback to ASCII
                 raise ValueError("Invalid input: could not decode byte stream")
