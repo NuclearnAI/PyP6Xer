@@ -29,6 +29,10 @@ from typing import List
 from xerparser.model.classes.data import Data
 from xerparser.write import writeXER
 import sys
+from typing import Generator, Any, Union
+from pathlib import Path
+import io
+import re
 
 csv.field_size_limit(sys.maxsize)
 
@@ -282,9 +286,7 @@ class Reader:
     def nonworks(self) -> List[NonWork]:
         return self._nonworks
 
-    def __init__(self, filename):
-        file = open(filename, 'r')
-        self.file = filename
+    def __init__(self, filename_or_stream: Union[str, Path, Generator[bytes, Any, None]]):
         self._tasks = Tasks()
         self._predecessors = Predecessors()
         self._projects = Projects()
@@ -322,31 +324,63 @@ class Reader:
         self._data.taskresource = self._activityresources
         self._data.taskactvcodes = self._activitycodes
 
+        # Determine if input is a file path (str) or a byte stream (bytes)
+        if isinstance(filename_or_stream, (str, Path)):
+            if isinstance(filename_or_stream, Path):
+                # Convert Path to str for compatibility
+                filename_or_stream = str(filename_or_stream)
+            # Treat as a file path, open with universal-newline mode
+            with codecs.open(filename_or_stream, encoding='utf-8', errors='ignore') as tsvfile:
+                stream = csv.reader(tsvfile, delimiter='\t')
+                self._parse_stream(stream)
+        elif isinstance(filename_or_stream, Generator):
+            self._handle_byte_stream(filename_or_stream)
+        else:
+            raise ValueError("Invalid input: must be a file path or a byte stream")
+        
+    def _handle_generator_bytes(self, byte_stream: Generator[bytes, Any, None]):
+        for line in byte_stream:
+            # a function with yield is a generator obj
+            yield line
 
-        with codecs.open(filename, encoding='utf-8', errors='ignore') as tsvfile:
-            stream = csv.reader(tsvfile, delimiter='\t')
-            for row in stream:
-                try:
-                    if not row:  # Skip empty rows
-                        Warning("Empty row detected on row %s", stream.line_num)
-                        continue
-                    if row[0] =="%T":
-                        current_table = row[1]
-                    elif row[0] == "%F":
-                        current_headers = [r.strip() for r in row[1:]]
-                    elif row[0] == "%R":
-                        zipped_record = dict(zip(current_headers, row[1:]))
-                        self.create_object(current_table, zipped_record)
-                except Exception as e:
-                    print("Error reading line %s: %s", stream.line_num, e)
-                    raise e
+    def _handle_byte_stream(self, byte_stream: Generator[bytes, Any, None]):
+        from typing import Iterator
+        def byte_stream_to_line_iterator(byte_stream: Generator[bytes, Any, Any], encoding: str = 'iso-8859-1') -> Iterator[str]:
+            buffer = ""
+            for chunk in byte_stream:
+                buffer += chunk.decode(encoding)
+                lines = buffer.split("\r\n")
+                
+                for line in lines[:-1]:  # Yield all lines except the last incomplete one
+                    yield line
+                buffer = lines[-1]  # Keep the last incomplete line in buffer for the next chunk
 
-        # for line in content:
-        #     line_lst = line.split('\t')
-        #     if line_lst[0] == "%T":
-        #         current_table = line_lst[1]
-        #     elif line_lst[0] == "%R":
-        #         self.create_object(current_table, line_lst[1:])
+            if buffer:  # Yield any remaining data as a final line
+                yield buffer
+
+
+        # Use csv.reader to parse text lines
+        csv_reader = csv.reader(byte_stream_to_line_iterator(byte_stream), delimiter='\t')  # Assuming the input is tab-delimited
+
+        # Pass the csv reader to _parse_stream
+        self._parse_stream(csv_reader)         
+
+    def _parse_stream(self, text_stream):
+        for row in text_stream:
+            try:
+                if not row:  # Skip empty rows
+                    print("Warning: Empty row detected on row %s" % text_stream.line_num)
+                    continue
+                if row[0] == "%T":
+                    self.current_table = row[1]
+                elif row[0] == "%F":
+                    self.current_headers = [r.strip() for r in row[1:]]
+                elif row[0] == "%R":
+                    zipped_record = dict(zip(self.current_headers, row[1:]))
+                    self.create_object(self.current_table, zipped_record)
+            except Exception as e:
+                print("Error reading line %s: %s" % (text_stream.line_num, e))
+                raise e
 
     def get_num_lines(self, file_path):
         fp = open(file_path, "r+")
