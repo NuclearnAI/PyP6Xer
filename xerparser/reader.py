@@ -337,11 +337,6 @@ class Reader:
             self._handle_byte_stream(filename_or_stream)
         else:
             raise ValueError("Invalid input: must be a file path or a byte stream")
-        
-    def _handle_generator_bytes(self, byte_stream: Generator[bytes, Any, None]):
-        for line in byte_stream:
-            # a function with yield is a generator obj
-            yield line
 
     def _handle_byte_stream(self, byte_stream: Generator[bytes, Any, None]):
         from typing import Iterator
