@@ -330,7 +330,7 @@ class Reader:
                 # Convert Path to str for compatibility
                 filename_or_stream = str(filename_or_stream)
             # Treat as a file path, open with universal-newline mode
-            with codecs.open(filename_or_stream, encoding='utf-8', errors='ignore') as tsvfile:
+            with codecs.open(filename_or_stream, encoding='iso-8859-1', errors='ignore') as tsvfile:
                 stream = csv.reader(tsvfile, delimiter='\t')
                 self._parse_stream(stream)
         elif isinstance(filename_or_stream, Generator):
