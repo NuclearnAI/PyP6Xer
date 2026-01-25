@@ -25,11 +25,46 @@ This file starts the process of reading and parsing xer files
 import csv
 import mmap
 import codecs
-from xerparser import *
+import warnings
 from typing import List
-from xerparser.model.classes.data import Data
-from xerparser.write import writeXER
 import sys
+
+from xerparser.model.classes.data import Data
+from xerparser.model.classes.taskpred import TaskPred
+from xerparser.model.classes.projcat import ProjCat
+from xerparser.model.classes.taskproc import TaskProc
+from xerparser.model.classes.fintmpl import FinTmpl
+from xerparser.model.classes.nonwork import NonWork
+from xerparser.write import writeXER
+from xerparser.model.tasks import Tasks
+from xerparser.model.predecessors import Predecessors
+from xerparser.model.projects import Projects
+from xerparser.model.wbss import WBSs
+from xerparser.model.resources import Resources
+from xerparser.model.accounts import Accounts
+from xerparser.model.activitycodes import ActivityCodes
+from xerparser.model.acttypes import ActTypes
+from xerparser.model.calendars import Calendars
+from xerparser.model.currencies import Currencies
+from xerparser.model.obss import OBSs
+from xerparser.model.rcattypes import RCatTypes
+from xerparser.model.rcatvals import RCatVals
+from xerparser.model.rolerates import RoleRates
+from xerparser.model.roles import Roles
+from xerparser.model.rsrccurves import ResourceCurves
+from xerparser.model.rsrcrates import ResourceRates
+from xerparser.model.rsrccats import ResourceCategories
+from xerparser.model.schedoptions import SchedOptions
+from xerparser.model.activitiyresources import ActivityResources
+from xerparser.model.udfvalues import UDFValues
+from xerparser.model.udftypes import UDFTypes
+from xerparser.model.taskactvs import TaskActvs
+from xerparser.model.pacttypes import PCatTypes
+from xerparser.model.pcatvals import PCatVals
+from xerparser.model.projcats import ProjCats
+from xerparser.model.taskprocs import TaskProcs
+from xerparser.model.fintmpls import FinTmpls
+from xerparser.model.nonworks import NonWorks
 
 csv.field_size_limit(sys.maxsize)
 
@@ -58,72 +93,58 @@ class Reader:
 
     def create_object(self, object_type, params):
         """
+        Create and add an object to the appropriate collection based on object type.
 
         Args:
-            object_type:
-            params:
+            object_type: The XER record type (e.g., 'PROJECT', 'TASK', etc.)
+            params: Dictionary of field values for the record
 
         Returns:
-
+            None
         """
-        if object_type.strip() == "CURRTYPE":
-            self._currencies.add(params)
-        elif object_type.strip() == "ROLES":
-            self._roles.add(params)
-        elif object_type.strip() == "ACCOUNT":
-            self._accounts.add(params)
-        elif object_type.strip() == "ROLERATE":
-            self._rolerates.add(params)
-        elif object_type.strip() == "OBS":
-            self._obss.add(params)
-        elif object_type.strip() == "RCATTYPE":
-            self._rcattypes.add(params)
-        elif object_type.strip() == "UDFTYPE":
-            self._udftypes.add(params)
-        elif object_type.strip() == "RCATVAL":
-            self._rcatvals.add(params)
-        elif object_type.strip() == "PROJECT":
-            self._projects.add(params, self._data)
-        elif object_type.strip() == "CALENDAR":
-            self._calendars.add(params)
-        elif object_type.strip() == "SCHEDOPTIONS":
-            self._schedoptions.add(params)
-        elif object_type.strip() == "PROJWBS":
-            self._wbss.add(params, self._data)
-        elif object_type.strip() == "RSRC":
-            self._resources.add(params)
-        elif object_type.strip() == "RSRCCURVDATA":
-            self._rsrcurves.add(params)
-        elif object_type.strip() == "ACTVTYPE":
-            self._acttypes.add(params)
-        elif object_type.strip() == "PCATTYPE":
-            self._pcattypes.add(params)
-        elif object_type.strip() == "PROJPCAT":
-            self._projpcats.add(params)
-        elif object_type.strip() == "PCATVAL":
-            self._pcatvals.add(params)
-        elif object_type.strip() == "RSRCRATE":
-            self._rsrcrates.add(params)
-        elif object_type.strip() == "RSRCRCAT":
-            self._rsrccats.add(params)
-        elif object_type.strip() == "TASK":
-            self._tasks.add(params, self._data)
-        elif object_type.strip() == "ACTVCODE":
-            self._actvcodes.add(params)
-        elif object_type.strip() == "TASKPRED":
-            self._predecessors.add(params)
-        elif object_type.strip() == "TASKRSRC":
-            self._activityresources.add(params, self._data)
-        elif object_type.strip() == "TASKPROC":
-            self._taskprocs.add(params)
-        elif object_type.strip() == "TASKACTV":
-            self._activitycodes.add(params, self._data)
-        elif object_type.strip() == "UDFVALUE":
-            self._udfvalues.add(params)
-        elif object_type.strip() == "FINTMPL":
-            self._fintmpls.add(params)
-        elif object_type.strip() == "NONWORK":
-            self._nonworks.add(params)
+        object_type = object_type.strip()
+
+        # Dispatch table for handlers that don't need data parameter
+        simple_handlers = {
+            "CURRTYPE": self._currencies,
+            "ROLES": self._roles,
+            "ACCOUNT": self._accounts,
+            "ROLERATE": self._rolerates,
+            "OBS": self._obss,
+            "RCATTYPE": self._rcattypes,
+            "UDFTYPE": self._udftypes,
+            "RCATVAL": self._rcatvals,
+            "CALENDAR": self._calendars,
+            "SCHEDOPTIONS": self._schedoptions,
+            "RSRC": self._resources,
+            "RSRCCURVDATA": self._rsrcurves,
+            "ACTVTYPE": self._acttypes,
+            "PCATTYPE": self._pcattypes,
+            "PROJPCAT": self._projpcats,
+            "PCATVAL": self._pcatvals,
+            "RSRCRATE": self._rsrcrates,
+            "RSRCRCAT": self._rsrccats,
+            "ACTVCODE": self._actvcodes,
+            "TASKPRED": self._predecessors,
+            "TASKPROC": self._taskprocs,
+            "UDFVALUE": self._udfvalues,
+            "FINTMPL": self._fintmpls,
+            "NONWORK": self._nonworks,
+        }
+
+        # Dispatch table for handlers that need data parameter
+        data_handlers = {
+            "PROJECT": self._projects,
+            "PROJWBS": self._wbss,
+            "TASK": self._tasks,
+            "TASKRSRC": self._activityresources,
+            "TASKACTV": self._activitycodes,
+        }
+
+        if object_type in simple_handlers:
+            simple_handlers[object_type].add(params)
+        elif object_type in data_handlers:
+            data_handlers[object_type].add(params, self._data)
 
     def summary(self):
         print("Number of activities: ", self.tasks.count)
@@ -327,7 +348,7 @@ class Reader:
             for row in stream:
                 try:
                     if not row:  # Skip empty rows
-                        Warning("Empty row detected on row %s", stream.line_num)
+                        warnings.warn(f"Empty row detected on row {stream.line_num}")
                         continue
                     if row[0] == "%T":
                         current_table = row[1]
@@ -348,9 +369,10 @@ class Reader:
         #         self.create_object(current_table, line_lst[1:])
 
     def get_num_lines(self, file_path):
-        fp = open(file_path, "r+")
-        buf = mmap.mmap(fp.fileno(), 0)
-        lines = 0
-        while buf.readline():
-            lines += 1
+        with open(file_path, "r+") as fp:
+            buf = mmap.mmap(fp.fileno(), 0)
+            lines = 0
+            while buf.readline():
+                lines += 1
+            buf.close()
         return lines

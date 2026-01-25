@@ -84,7 +84,7 @@ class Project:
         self.allow_neg_act_flag = params.get('allow_neg_act_flag').strip() if params.get('allow_neg_act_flag') else None
         self.sum_assign_level = params.get('sum_assign_level').strip() if params.get('sum_assign_level') else None
         self.last_fin_dates_id = params.get('last_fin_dates_id').strip() if params.get('last_fin_dates_id') else None
-        self.last_baseline_update_date = params.get('last_fin_dates_id').strip() if params.get('last_fin_dates_id') else None
+        self.last_baseline_update_date = params.get('last_baseline_update_date').strip() if params.get('last_baseline_update_date') else None
         self.cr_external_key = params.get('cr_external_key').strip() if params.get('cr_external_key') else None
         self.apply_actuals_date = params.get('apply_actuals_date').strip() if params.get('apply_actuals_date') else None
         self.location_id = params.get('location_id') if params.get('location_id') else None
@@ -97,7 +97,7 @@ class Project:
         self.close_period_flag = params.get('close_period_flag').strip() if params.get('close_period_flag') else None
         self.sum_refresh_date = params.get('sum_refresh_date').strip() if params.get('sum_refresh_date') else None
         self.trsrcsum_loaded = params.get('trsrcsum_loaded').strip() if params.get('trsrcsum_loaded') else None
-        self.fintmpl_id = int(params.get('fintmpl_id').strip()) if params.get('fintmpl_id') else None
+        self.fintmpl_id = int(params.get('fintmpl_id').strip()) if params.get('fintmpl_id') and params.get('fintmpl_id').strip() else None
         self.sumtask_loaded = params.get('sumtask_loaded').strip() if params.get('sumtask_loaded') else None
         self.data = data
 
