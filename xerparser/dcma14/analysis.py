@@ -15,13 +15,22 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with PyP6XER.  If not, see <https://www.gnu.org/licenses/old-licenses/lgpl-2.1.en.html>.
+
+from __future__ import annotations
+
 from datetime import datetime
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 import logging
+
+if TYPE_CHECKING:
+    from xerparser.reader import Reader
+    from xerparser.model.classes.task import Task
+    from xerparser.model.classes.taskpred import TaskPred
 
 logger = logging.getLogger(__name__)
 
 
-class DCMA14():
+class DCMA14:
     """DCMA 14-point analysis for project schedule quality assessment.
     
     This class performs a comprehensive analysis of a project schedule
@@ -56,19 +65,47 @@ class DCMA14():
                 }
             }
     """
-    def __init__(self, programme, duration_limit=1, lag_limit=0, tf_limit=0):
-        self.count = 0
-        self.programme = programme
-        self.dur_limit = duration_limit
-        self.lag_limit = lag_limit
-        self.tf_limit = tf_limit
-        self.results = {}
+    def __init__(
+        self,
+        programme: Reader,
+        duration_limit: int = 1,
+        lag_limit: int = 0,
+        tf_limit: int = 0
+    ) -> None:
+        self.count: int = 0
+        self.programme: Reader = programme
+        self.dur_limit: int = duration_limit
+        self.lag_limit: int = lag_limit
+        self.tf_limit: int = tf_limit
+        self.results: Dict[str, Any] = {}
         self.results['analysis'] = {}
 
+        # Analysis results (populated by analysis())
+        self.activity_count: int = 0
+        self.relation_count: int = 0
+        self.no_successors: List[Task] = []
+        self.no_successors_cnt: int = 0
+        self.no_predecessors: List[Task] = []
+        self.no_predecessors_cnt: int = 0
+        self.lags: List[TaskPred] = []
+        self.leads: List[TaskPred] = []
+        self.fsRel: List[TaskPred] = []
+        self.constraints: List[Task] = []
+        self.totalfloat: List[Task] = []
+        self.negativefloat: List[Task] = []
+        self.duration: List[Task] = []
+        self.invalidactualstart: List[Task] = []
+        self.invalidactualfinish: List[Task] = []
+        self.invalidearlystart: List[Task] = []
+        self.invalidearlyfinish: List[Task] = []
+        self.invaliddates: Dict[str, Any] = {}
+        self.actualendslippage: List[Task] = []
+        self.earlyendslippage: List[Task] = []
 
-    def analysis(self):
+
+    def analysis(self) -> Dict[str, Any]:
         """Perform the complete DCMA 14-point analysis.
-        
+
         Returns:
             dict: Analysis results containing all 14 assessment points
         """
@@ -221,38 +258,37 @@ class DCMA14():
 
         return self.results
 
-    def chk_successors(self):
+    def chk_successors(self) -> List[Task]:
         """Check for activities with no successors.
-        
+
         Returns:
             list: Activities that have no successor relationships
         """
         return self.programme.activities.has_no_successor
 
-    def chk_predessors(self):
+    def chk_predessors(self) -> List[Task]:
         """Check for activities with no predecessors.
-        
+
         Returns:
             list: Activities that have no predecessor relationships
         """
         return self.programme.activities.has_no_predecessor
 
-    def get_activity(self, id):
+    def get_activity(self, id: int) -> Optional[Dict[str, Any]]:
         """Get activity information by ID.
-        
+
         Args:
             id: Activity ID to retrieve
-            
+
         Returns:
             dict or None: Activity information including id, name, duration, and total float
         """
         activity = self.programme.activities.find_by_id(id)
-        # print(activity)
-        if type(activity) == list:
+        if isinstance(activity, list):
             return None
         return {
-                "id": activity.task_code, 
+                "id": activity.task_code,
                 "name": activity.task_name,
                 "duration": activity.duration,
-                "tf":activity.total_float_hr_cnt / 8.0 if activity.total_float_hr_cnt else 0
+                "tf": activity.total_float_hr_cnt / 8.0 if activity.total_float_hr_cnt else 0
                 }

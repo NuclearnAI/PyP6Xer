@@ -80,3 +80,17 @@ from xerparser.model.projcats import ProjCats
 from xerparser.model.taskprocs import TaskProcs
 from xerparser.model.fintmpls import FinTmpls
 from xerparser.model.nonworks import NonWorks
+
+# Validation utilities
+from xerparser.validation import (
+    ValidationIssue,
+    ValidationResult,
+    ValidationSeverity,
+    XERValidator,
+    validate_xer_structure,
+    parse_int,
+    parse_float,
+    parse_datetime,
+    parse_string,
+    parse_bool,
+)
