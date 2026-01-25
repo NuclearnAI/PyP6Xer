@@ -17,10 +17,11 @@
 # along with PyP6XER.  If not, see <https://www.gnu.org/licenses/old-licenses/lgpl-2.1.en.html>.
 
 
-'''
+"""
 This file starts the process of reading and parsing xer files
 
-'''
+"""
+
 import csv
 import mmap
 import codecs
@@ -34,7 +35,6 @@ csv.field_size_limit(sys.maxsize)
 
 
 class Reader:
-
     """
     Reader class is the main parser for xer files. It takes a file path as a parameter.
     The read records are parsed into classes depending on their types like activities, wbs,etc.
@@ -48,7 +48,7 @@ class Reader:
 
     """
 
-    current_table = ''
+    current_table = ""
     current_headers = []
 
     def write(self, filename=None):
@@ -126,8 +126,8 @@ class Reader:
             self._nonworks.add(params)
 
     def summary(self):
-        print('Number of activities: ', self.tasks.count)
-        print('Number of relationships: ', len(TaskPred.obj_list))
+        print("Number of activities: ", self.tasks.count)
+        print("Number of relationships: ", len(TaskPred.obj_list))
 
     @property
     def projects(self) -> Projects:
@@ -194,6 +194,7 @@ class Reader:
 
         """
         return self._activitycodes
+
     @property
     def actvcodes(self) -> TaskActvs:
         return self._actvcodes
@@ -283,7 +284,6 @@ class Reader:
         return self._nonworks
 
     def __init__(self, filename):
-        file = open(filename, 'r')
         self.file = filename
         self._tasks = Tasks()
         self._predecessors = Predecessors()
@@ -321,16 +321,15 @@ class Reader:
         self._data.resources = self._resources
         self._data.taskresource = self._activityresources
         self._data.taskactvcodes = self._activitycodes
-
-
-        with codecs.open(filename, encoding='utf-8', errors='ignore') as tsvfile:
-            stream = csv.reader(tsvfile, delimiter='\t')
+        self._data.predecessors = self._predecessors
+        with codecs.open(filename, encoding="utf-8", errors="ignore") as tsvfile:
+            stream = csv.reader(tsvfile, delimiter="\t")
             for row in stream:
                 try:
                     if not row:  # Skip empty rows
                         Warning("Empty row detected on row %s", stream.line_num)
                         continue
-                    if row[0] =="%T":
+                    if row[0] == "%T":
                         current_table = row[1]
                     elif row[0] == "%F":
                         current_headers = [r.strip() for r in row[1:]]

@@ -50,7 +50,7 @@ class Task:
         #  the same WBS. Top-down estimation distributes estimated units in a top-down manner to activities using the
         #  WBS hierarchy.
 
-        self.est_wt = locale.atof(params.get('est_wt').strip()) if 'est_wt' in params.keys() else None
+        self.est_wt = locale.atof(params.get('est_wt').strip()) if 'est_wt' in params.keys() and params.get('est_wt') != '' else None
         # Indicates that the planned labor and nonlabor units for the activity will not be modified by top-down
         # estimation.
         self.lock_plan_flag = params.get('lock_plan_flag') if params.get('lock_plan_flag') else None
@@ -310,12 +310,12 @@ class Task:
 
     @property
     def successors(self):
-        suss = Predecessors.get_successors(self.task_id)
+        suss = self.data.predecessors.get_successors(self.task_id)
         return suss
 
     @property
     def predecessors(self):
-        return Predecessors.get_predecessors(self.task_id)
+        return self.data.predecessors.get_predecessors(self.task_id)
 
     @classmethod
     def find_by_wbs_id(cls, wbs_id):
