@@ -15,11 +15,22 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with PyP6XER.  If not, see <https://www.gnu.org/licenses/old-licenses/lgpl-2.1.en.html>.
+
+from __future__ import annotations
+
 from datetime import datetime
-from logging import critical
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
+import logging
+
+if TYPE_CHECKING:
+    from xerparser.reader import Reader
+    from xerparser.model.classes.task import Task
+    from xerparser.model.classes.taskpred import TaskPred
+
+logger = logging.getLogger(__name__)
 
 
-class DCMA14():
+class DCMA14:
     """DCMA 14-point analysis for project schedule quality assessment.
     
     This class performs a comprehensive analysis of a project schedule
@@ -54,19 +65,47 @@ class DCMA14():
                 }
             }
     """
-    def __init__(self, programme, duration_limit=1, lag_limit=0, tf_limit=0):
-        self.count = 0
-        self.programme = programme
-        self.dur_limit = duration_limit
-        self.lag_limit = lag_limit
-        self.tf_limit = tf_limit
-        self.results = {}
+    def __init__(
+        self,
+        programme: Reader,
+        duration_limit: int = 1,
+        lag_limit: int = 0,
+        tf_limit: int = 0
+    ) -> None:
+        self.count: int = 0
+        self.programme: Reader = programme
+        self.dur_limit: int = duration_limit
+        self.lag_limit: int = lag_limit
+        self.tf_limit: int = tf_limit
+        self.results: Dict[str, Any] = {}
         self.results['analysis'] = {}
 
+        # Analysis results (populated by analysis())
+        self.activity_count: int = 0
+        self.relation_count: int = 0
+        self.no_successors: List[Task] = []
+        self.no_successors_cnt: int = 0
+        self.no_predecessors: List[Task] = []
+        self.no_predecessors_cnt: int = 0
+        self.lags: List[TaskPred] = []
+        self.leads: List[TaskPred] = []
+        self.fsRel: List[TaskPred] = []
+        self.constraints: List[Task] = []
+        self.totalfloat: List[Task] = []
+        self.negativefloat: List[Task] = []
+        self.duration: List[Task] = []
+        self.invalidactualstart: List[Task] = []
+        self.invalidactualfinish: List[Task] = []
+        self.invalidearlystart: List[Task] = []
+        self.invalidearlyfinish: List[Task] = []
+        self.invaliddates: Dict[str, Any] = {}
+        self.actualendslippage: List[Task] = []
+        self.earlyendslippage: List[Task] = []
 
-    def analysis(self):
+
+    def analysis(self) -> Dict[str, Any]:
         """Perform the complete DCMA 14-point analysis.
-        
+
         Returns:
             dict: Analysis results containing all 14 assessment points
         """
@@ -78,13 +117,13 @@ class DCMA14():
         self.no_successors_cnt = len(self.no_successors)
         self.results['analysis']['successors'] = {'cnt': self.no_successors_cnt,
                                                   'activities': [self.get_activity(x.task_id) for x in self.no_successors],
-                                                  'pct': self.no_successors_cnt / float(self.activity_count)}
+                                                  'pct': self.no_successors_cnt / float(self.activity_count) if self.activity_count > 0 else 0.0}
         #1.2 predecessors
         self.no_predecessors = self.chk_predessors()
         self.no_predecessors_cnt = len(self.no_predecessors)
         self.results['analysis']['predecessors'] = {'cnt': self.no_predecessors_cnt,
                                                     'activities': [self.get_activity(x.task_id) for x in self.no_predecessors],
-                                                    'pct': self.no_predecessors_cnt / float(self.activity_count)}
+                                                    'pct': self.no_predecessors_cnt / float(self.activity_count) if self.activity_count > 0 else 0.0}
         #2 lags
         self.lags = list(filter(lambda x: x.lag_hr_cnt > self.lag_limit if x.lag_hr_cnt else None, self.programme.relations))
         self.results['analysis']['lags'] = {'cnt': len(self.lags),
@@ -94,7 +133,7 @@ class DCMA14():
                                                             "type": x.pred_type,
                                                             "lag": int(x.lag_hr_cnt / 8.0)
                                                             } for x in self.lags],
-                                            'pct': len(self.lags) / float(self.relation_count)}
+                                            'pct': len(self.lags) / float(self.relation_count) if self.relation_count > 0 else 0.0}
         #3 leads
         self.leads = self.programme.relations.leads
         self.results['analysis']['leads'] = {'cnt': len(self.leads),
@@ -104,7 +143,7 @@ class DCMA14():
                                                             "type": x.pred_type,
                                                             "lag": int(x.lag_hr_cnt / 8.0)
                                                             } for x in self.leads],
-                                             'pct': len(self.leads) / float(self.relation_count)}
+                                             'pct': len(self.leads) / float(self.relation_count) if self.relation_count > 0 else 0.0}
         #4 relationships
         self.fsRel = self.programme.relations.finish_to_start
         self.results['analysis']['relations'] = {'fs_cnt': len(self.fsRel), 'relationship': [
@@ -115,7 +154,7 @@ class DCMA14():
                                                     "lag": int(x.lag_hr_cnt / 8.0)
                                                     } for x in self.fsRel]}
         #5 constraints
-        lst = ['CS_MANDFIN', 'CS_MANDFIN']
+        lst = ['CS_MANDSTART', 'CS_MANDFIN']
         self.constraints = list(filter(lambda x: x.cstr_type and x.cstr_type in lst,
                                         self.programme.activities))
         self.results['analysis']['constraints'] = {'cstr_cnt': len(self.constraints), 
@@ -124,17 +163,17 @@ class DCMA14():
         self.totalfloat = list(filter(lambda x: x.total_float_hr_cnt /8.0 > self.tf_limit if x.total_float_hr_cnt else 0,  self.programme.activities.activities))
         self.results['analysis']['totalfloat'] = {'cnt': len(self.totalfloat),
                                                 'activities': [self.get_activity(x.task_id) for x in self.totalfloat],
-                                                'pct': len(self.totalfloat) / float(self.activity_count)}
+                                                'pct': len(self.totalfloat) / float(self.activity_count) if self.activity_count > 0 else 0.0}
         #7 negative total float
         self.negativefloat = list(filter(lambda x: x.total_float_hr_cnt /8.0 < 0 if x.total_float_hr_cnt else 0,  self.programme.activities.activities))
         self.results['analysis']['negativefloat'] = {'cnt': len(self.negativefloat),
                                                 'activities': [self.get_activity(x.task_id) for x in self.negativefloat],
-                                                'pct': len(self.negativefloat) / float(self.activity_count)}
+                                                'pct': len(self.negativefloat) / float(self.activity_count) if self.activity_count > 0 else 0.0}
         #8 durations
         self.duration = list(filter(lambda x: x.duration > self.dur_limit,  self.programme.activities.activities))
         self.results['analysis']['duration'] = {'cnt': len(self.duration),
                                                 'activities': [self.get_activity(x.task_id) for x in self.duration],
-                                                'pct': len(self.duration) / float(self.activity_count)}
+                                                'pct': len(self.duration) / float(self.activity_count) if self.activity_count > 0 else 0.0}
         #9 Check for Invalid Dates
         # no actual dates beyong data date
         data_date = {}
@@ -149,13 +188,12 @@ class DCMA14():
             else:
                 # If no date provided, use current date as fallback
                 data_date[str(x.proj_id)] = datetime.now()
-        print(data_date)
         self.invalidactualstart = list(filter(lambda x: None if x.act_start_date is None else x.act_start_date > data_date[str(x.proj_id)], self.programme.activities.activities))
         self.invalidactualfinish = list(filter(lambda x: None if x.act_end_date is None else x.act_end_date > data_date[str(x.proj_id)], self.programme.activities.activities))
         self.invalidearlystart = list(filter(lambda x: None if x.early_start_date is None else x.early_start_date < data_date[str(x.proj_id)], self.programme.activities.activities))
         self.invalidearlyfinish = list(filter(lambda x: None if x.early_end_date is None else x.early_end_date < data_date[str(x.proj_id)], self.programme.activities.activities))
         cnt = len(self.invalidactualfinish) + len(self.invalidactualstart) + len(self.invalidearlystart) + len(self.invalidearlyfinish)
-        pct = cnt / float(self.activity_count)
+        pct = cnt / float(self.activity_count) if self.activity_count > 0 else 0.0
         self.invaliddates = {
             "actual_start": [self.get_activity(x.task_id) for x in self.invalidactualstart],
             "actual_finish": [self.get_activity(x.task_id) for x in self.invalidactualfinish],
@@ -176,16 +214,14 @@ class DCMA14():
         self.results['analysis']['resources'] = {
             'activities': [self.get_activity(x) for x in no_resources],
             "cnt": len(no_resources),
-            'pct': len(no_resources) / float(self.activity_count)
+            'pct': len(no_resources) / float(self.activity_count) if self.activity_count > 0 else 0.0
         }
-        print(no_resources)
 
         #11 slippage from target
         # end dates are later than target end dates
         self.actualendslippage = list(filter(lambda x: None if x.act_end_date is None else x.act_end_date > x.target_end_date, self.programme.activities.activities))
         self.earlyendslippage = list(filter(lambda x: None if x.early_end_date is None else x.early_end_date > x.target_end_date, self.programme.activities.activities))
         slipped = self.actualendslippage + self.earlyendslippage
-        print("SLIPPED", slipped)
         self.results['analysis']['slippage'] = {
             'activities': [{
                 "id":x.task_code,
@@ -194,7 +230,7 @@ class DCMA14():
                 "planned_finish": str(x.target_end_date)
             } for x in slipped],
             'cnt': len(slipped),
-            'pct': len(slipped) / float(self.activity_count)
+            'pct': len(slipped) / float(self.activity_count) if self.activity_count > 0 else 0.0
         }
 
         #12 Critical Path Test
@@ -206,20 +242,13 @@ class DCMA14():
         critical = []
         for act in self.programme.activities.activities:
             if act.total_float_hr_cnt is not None:
-                print("TF FOUND", act.task_code, act.total_float_hr_cnt)
                 if act.total_float_hr_cnt <= 0:
-                    
                     critical.append(act)
-            else:
-                print("TF Not found")
-
-
-        print("critical", [(task.task_code, task.early_start_date, task.total_float_hr_cnt) for task in critical])
 
         self.results['analysis']['critical'] = {
             'activities': [self.get_activity(x.task_id) for x in critical],
             'cnt': len(critical),
-            'pct': len(critical) / self.activity_count
+            'pct': len(critical) / self.activity_count if self.activity_count > 0 else 0.0
         }
 
         
@@ -229,38 +258,37 @@ class DCMA14():
 
         return self.results
 
-    def chk_successors(self):
+    def chk_successors(self) -> List[Task]:
         """Check for activities with no successors.
-        
+
         Returns:
             list: Activities that have no successor relationships
         """
         return self.programme.activities.has_no_successor
 
-    def chk_predessors(self):
+    def chk_predessors(self) -> List[Task]:
         """Check for activities with no predecessors.
-        
+
         Returns:
             list: Activities that have no predecessor relationships
         """
         return self.programme.activities.has_no_predecessor
 
-    def get_activity(self, id):
+    def get_activity(self, id: int) -> Optional[Dict[str, Any]]:
         """Get activity information by ID.
-        
+
         Args:
             id: Activity ID to retrieve
-            
+
         Returns:
             dict or None: Activity information including id, name, duration, and total float
         """
         activity = self.programme.activities.find_by_id(id)
-        # print(activity)
-        if type(activity) == list:
+        if isinstance(activity, list):
             return None
         return {
-                "id": activity.task_code, 
+                "id": activity.task_code,
                 "name": activity.task_name,
                 "duration": activity.duration,
-                "tf":activity.total_float_hr_cnt / 8.0 if activity.total_float_hr_cnt else 0
+                "tf": activity.total_float_hr_cnt / 8.0 if activity.total_float_hr_cnt else 0
                 }
