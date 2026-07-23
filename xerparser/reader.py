@@ -23,6 +23,7 @@ This file starts the process of reading and parsing xer files
 """
 
 import csv
+import io
 import mmap
 import codecs
 from xerparser import *
@@ -32,6 +33,30 @@ from xerparser.write import writeXER
 import sys
 
 csv.field_size_limit(sys.maxsize)
+
+
+def _decode_xer_bytes(raw: bytes) -> str:
+    """Decode raw XER bytes once, preserving every character.
+
+    Ladder: BOM (utf-8/utf-16) -> utf-8 strict -> cp1252 strict ->
+    cp1252 with replacement (never-fail floor). utf-8 is tried before cp1252
+    because its strict multi-byte structure is a reliable detector, so genuine
+    utf-8 files decode correctly; cp1252 is P6's default for Western text.
+    Non-Western codecs (CJK/Cyrillic) degrade to mojibake but are never
+    deleted — scheduling fields are all ASCII, so only labels garble.
+    """
+    if raw.startswith(codecs.BOM_UTF8):
+        return raw.decode("utf-8-sig")
+    if raw.startswith(codecs.BOM_UTF16_LE) or raw.startswith(codecs.BOM_UTF16_BE):
+        return raw.decode("utf-16")
+    try:
+        return raw.decode("utf-8")
+    except UnicodeDecodeError:
+        pass
+    try:
+        return raw.decode("cp1252")
+    except UnicodeDecodeError:
+        return raw.decode("cp1252", errors="replace")
 
 
 class Reader:
@@ -322,23 +347,24 @@ class Reader:
         self._data.taskresource = self._activityresources
         self._data.taskactvcodes = self._activitycodes
         self._data.predecessors = self._predecessors
-        with codecs.open(filename, encoding="utf-8", errors="ignore") as tsvfile:
-            stream = csv.reader(tsvfile, delimiter="\t")
-            for row in stream:
-                try:
-                    if not row:  # Skip empty rows
-                        Warning("Empty row detected on row %s", stream.line_num)
-                        continue
-                    if row[0] == "%T":
-                        current_table = row[1]
-                    elif row[0] == "%F":
-                        current_headers = [r.strip() for r in row[1:]]
-                    elif row[0] == "%R":
-                        zipped_record = dict(zip(current_headers, row[1:]))
-                        self.create_object(current_table, zipped_record)
-                except Exception as e:
-                    print("Error reading line %s: %s", stream.line_num, e)
-                    raise e
+        with open(filename, "rb") as fh:
+            text = _decode_xer_bytes(fh.read())
+        stream = csv.reader(io.StringIO(text), delimiter="\t")
+        for row in stream:
+            try:
+                if not row:  # Skip empty rows
+                    Warning("Empty row detected on row %s", stream.line_num)
+                    continue
+                if row[0] == "%T":
+                    current_table = row[1]
+                elif row[0] == "%F":
+                    current_headers = [r.strip() for r in row[1:]]
+                elif row[0] == "%R":
+                    zipped_record = dict(zip(current_headers, row[1:]))
+                    self.create_object(current_table, zipped_record)
+            except Exception as e:
+                print("Error reading line %s: %s", stream.line_num, e)
+                raise e
 
         # for line in content:
         #     line_lst = line.split('\t')
