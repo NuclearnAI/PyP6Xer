@@ -28,6 +28,7 @@ import mmap
 import codecs
 from xerparser import *
 from typing import List
+from xerparser.exceptions import XerParseError
 from xerparser.model.classes.data import Data
 from xerparser.write import writeXER
 import sys
@@ -349,22 +350,43 @@ class Reader:
         self._data.predecessors = self._predecessors
         with open(filename, "rb") as fh:
             text = _decode_xer_bytes(fh.read())
+        # A complete export always ends with an %E marker. Pre-scan for it so a
+        # short final row (a mid-row cut) reports as truncation, while a short
+        # row inside an otherwise-complete file reports as raggedness.
+        has_end_marker = any(line.startswith("%E") for line in text.splitlines())
+        current_table = ""
+        current_headers = []
         stream = csv.reader(io.StringIO(text), delimiter="\t")
         for row in stream:
-            try:
-                if not row:  # Skip empty rows
-                    Warning("Empty row detected on row %s", stream.line_num)
-                    continue
-                if row[0] == "%T":
-                    current_table = row[1]
-                elif row[0] == "%F":
-                    current_headers = [r.strip() for r in row[1:]]
-                elif row[0] == "%R":
-                    zipped_record = dict(zip(current_headers, row[1:]))
+            if not row:  # Skip empty rows
+                continue
+            if row[0] == "%T":
+                current_table = row[1]
+            elif row[0] == "%F":
+                current_headers = [r.strip() for r in row[1:]]
+            elif row[0] == "%R":
+                if len(row) - 1 != len(current_headers):
+                    if has_end_marker:
+                        raise XerParseError(
+                            "ragged_row",
+                            f"{len(row) - 1} fields vs {len(current_headers)} headers",
+                            current_table,
+                            stream.line_num,
+                        )
+                    raise XerParseError(
+                        "truncated", "file cut off mid-row (no %E end marker)"
+                    )
+                zipped_record = dict(zip(current_headers, row[1:]))
+                try:
                     self.create_object(current_table, zipped_record)
-            except Exception as e:
-                print("Error reading line %s: %s", stream.line_num, e)
-                raise e
+                except XerParseError:
+                    raise
+                except Exception as e:
+                    raise XerParseError(
+                        "malformed_row", str(e), current_table, stream.line_num
+                    ) from e
+        if not has_end_marker:
+            raise XerParseError("truncated", "missing %E end marker")
 
         # for line in content:
         #     line_lst = line.split('\t')

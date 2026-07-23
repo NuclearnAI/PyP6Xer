@@ -10,6 +10,9 @@ Fixtures under tests/fixtures/ are byte-identical to the MRE-side IT-2 corpus.
 
 import os
 
+import pytest
+
+from xerparser.exceptions import XerParseError
 from xerparser.reader import Reader
 
 FIXTURES = os.path.join(os.path.dirname(__file__), "fixtures")
@@ -42,3 +45,37 @@ def test_ftb2_utf8_cjk_survive():
     assert len(cjk) == 12
     # cp1252-always would mangle each 3-byte CJK char into 3 Latin glyphs.
     assert "反" in "".join(names)
+
+
+# --- Group 2: typed parse errors (FT-B3 / FT-B4 / FT-B5) ----------------------
+
+
+def test_ftb3_bad_row_raises_malformed():
+    """A non-numeric task_id raises a typed malformed_row error with location."""
+    with pytest.raises(XerParseError) as exc:
+        Reader(fixture("struct_bad_row_raises.xer"))
+    assert exc.value.kind == "malformed_row"
+    assert exc.value.table == "TASK"
+    assert exc.value.line  # a concrete line number, not None
+
+
+@pytest.mark.parametrize("name", ["struct_ragged_short.xer", "struct_ragged_long.xer"])
+def test_ftb4_ragged_row_raises(name):
+    """A row whose field count != its %F header raises a typed ragged_row error."""
+    with pytest.raises(XerParseError) as exc:
+        Reader(fixture(name))
+    assert exc.value.kind == "ragged_row"
+    assert exc.value.table == "TASK"
+
+
+def test_ftb5_truncated_raises():
+    """A file cut off mid-row with no %E end marker raises a typed truncated error."""
+    with pytest.raises(XerParseError) as exc:
+        Reader(fixture("struct_truncated_midrow.xer"))
+    assert exc.value.kind == "truncated"
+
+
+def test_ftb5_golden_parses_clean():
+    """The false-positive control: a complete clean file raises nothing."""
+    reader = Reader(fixture("golden.xer"))
+    assert len(list(reader.activities)) > 0
