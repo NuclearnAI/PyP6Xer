@@ -201,9 +201,12 @@ class Task:
         #  import when an external relationship is lost.
         try:
             self.external_early_start_date = datetime.strptime(params.get('external_early_start_date').strip(), '%Y-%m-%d %H:%M') if params.get('external_early_start_date') else None
+        except (ValueError, AttributeError):
+            self.external_early_start_date = None
+        try:
             self.external_late_end_date = datetime.strptime(params.get('external_late_end_date'), '%Y-%m-%d %H:%M') if params.get('external_late_end_date') else None
-        except:
-            pass
+        except (ValueError, AttributeError):
+            self.external_late_end_date = None
         self.create_date = datetime.strptime(params.get('create_date'), '%Y-%m-%d %H:%M') if params.get('create_date') else None
         self.update_date = datetime.strptime(params.get('update_date'), '%Y-%m-%d %H:%M') if params.get('update_date') else None
         self.create_user = params.get('create_user').strip() if params.get('create_user') else None
@@ -254,9 +257,9 @@ class Task:
         return self.task_id
 
     @property
-    def totalint(self):
-        if self.total_int_hr_cnt:
-            tf = int(self.total_int_hr_cnt)/8.0
+    def totalfloat(self):
+        if self.total_float_hr_cnt:
+            tf = self.total_float_hr_cnt / 8.0
         else:
             return None
         return tf
@@ -278,7 +281,7 @@ class Task:
     def duration(self):
         dur = None
         if self.target_drtn_hr_cnt:
-            if self.calendar.day_hr_cnt:
+            if self.calendar and self.calendar.day_hr_cnt:
                 dur = self.target_drtn_hr_cnt / self.calendar.day_hr_cnt
             else:
                 dur = self.target_drtn_hr_cnt / 8.0
@@ -291,7 +294,7 @@ class Task:
         if self.cstr_type == None or self.cstr_date == None:
             return  None
         return {"ConstraintType": self.cstr_type,
-                "ConstrintDate": self.cstr_date
+                "ConstraintDate": self.cstr_date
                }
 
     @property
@@ -322,6 +325,6 @@ class Task:
         return [v for v in cls.obj_list if v.wbs_id == wbs_id]
 
     def __repr__(self):
-        return self.task_code
+        return self.task_code or ""
 
 
