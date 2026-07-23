@@ -22,7 +22,8 @@ class XerParseError(ValueError):
 
     Subclasses ValueError so existing ValueError->4xx mappings keep working.
     ``kind`` is the stable cross-consumer contract:
-    "malformed_row" | "ragged_row" | "truncated".
+    "malformed_row" | "ragged_row". Truncation is no longer a kind — it is
+    surfaced as a ``Reader.truncated`` flag so consumers set their own policy.
     """
 
     def __init__(self, kind, detail, table=None, line=None):

@@ -311,6 +311,9 @@ class Reader:
 
     def __init__(self, filename):
         self.file = filename
+        # Truncation is a soft signal: consumers that build one precedence
+        # network (sim) reject it; aggregating consumers (training) proceed.
+        self.truncated = False
         # These class-level lists accumulate across every Reader (cross-file
         # bleed + a worker memory leak); clear in place. Full scoping deferred.
         WBS.obj_list.clear()
@@ -391,9 +394,10 @@ class Reader:
                         "malformed_row", str(e), current_table, stream.line_num
                     ) from e
         if pending_short is not None:
-            raise XerParseError("truncated", "file cut off mid-row (no %E end marker)")
+            # Short final row nothing followed = mid-row cut; leave it uncreated.
+            self.truncated = True
         if not saw_end_marker:
-            raise XerParseError("truncated", "missing %E end marker")
+            self.truncated = True
 
         # for line in content:
         #     line_lst = line.split('\t')

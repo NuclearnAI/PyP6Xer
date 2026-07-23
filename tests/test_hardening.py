@@ -70,17 +70,20 @@ def test_ftb4_ragged_row_raises(name):
     assert exc.value.table == "TASK"
 
 
-def test_ftb5_truncated_raises():
-    """A file cut off mid-row with no %E end marker raises a typed truncated error."""
-    with pytest.raises(XerParseError) as exc:
-        Reader(fixture("struct_truncated_midrow.xer"))
-    assert exc.value.kind == "truncated"
+def test_ftb5_truncated_sets_flag_and_keeps_rows():
+    """A file cut off mid-row parses without raising, flags truncated, and keeps
+    the valid rows before the cut."""
+    reader = Reader(fixture("struct_truncated_midrow.xer"))
+    assert reader.truncated is True
+    assert len(list(reader.activities)) > 0
 
 
 def test_ftb5_golden_parses_clean():
-    """The false-positive control: a complete clean file raises nothing."""
+    """The false-positive control: a complete clean file raises nothing and is
+    not flagged truncated."""
     reader = Reader(fixture("golden.xer"))
     assert len(list(reader.activities)) > 0
+    assert reader.truncated is False
 
 
 # --- Group 3: per-Reader obj_list reset (FT-B7) -------------------------------
