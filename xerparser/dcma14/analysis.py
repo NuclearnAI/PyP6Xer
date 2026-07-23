@@ -16,9 +16,6 @@
 # You should have received a copy of the GNU General Public License
 # along with PyP6XER.  If not, see <https://www.gnu.org/licenses/old-licenses/lgpl-2.1.en.html>.
 from datetime import datetime
-import logging
-
-logger = logging.getLogger(__name__)
 
 
 class DCMA14():

@@ -204,7 +204,7 @@ class Task:
         except (ValueError, AttributeError):
             self.external_early_start_date = None
         try:
-            self.external_late_end_date = datetime.strptime(params.get('external_late_end_date'), '%Y-%m-%d %H:%M') if params.get('external_late_end_date') else None
+            self.external_late_end_date = datetime.strptime(params.get('external_late_end_date').strip(), '%Y-%m-%d %H:%M') if params.get('external_late_end_date') else None
         except (ValueError, AttributeError):
             self.external_late_end_date = None
         self.create_date = datetime.strptime(params.get('create_date'), '%Y-%m-%d %H:%M') if params.get('create_date') else None

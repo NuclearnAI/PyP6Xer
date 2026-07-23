@@ -37,6 +37,7 @@ from xerparser.model.classes.taskproc import TaskProc
 from xerparser.model.classes.fintmpl import FinTmpl
 from xerparser.model.classes.nonwork import NonWork
 from xerparser.model.classes.wbs import WBS
+from xerparser.model.classes.task import Task
 from xerparser.write import writeXER
 from xerparser.model.tasks import Tasks
 from xerparser.model.predecessors import Predecessors
@@ -130,47 +131,10 @@ class Reader:
         """
         object_type = object_type.strip()
 
-        # Dispatch table for handlers that don't need data parameter
-        simple_handlers = {
-            "CURRTYPE": self._currencies,
-            "ROLES": self._roles,
-            "ACCOUNT": self._accounts,
-            "ROLERATE": self._rolerates,
-            "OBS": self._obss,
-            "RCATTYPE": self._rcattypes,
-            "UDFTYPE": self._udftypes,
-            "RCATVAL": self._rcatvals,
-            "CALENDAR": self._calendars,
-            "SCHEDOPTIONS": self._schedoptions,
-            "RSRC": self._resources,
-            "RSRCCURVDATA": self._rsrcurves,
-            "ACTVTYPE": self._acttypes,
-            "PCATTYPE": self._pcattypes,
-            "PROJPCAT": self._projpcats,
-            "PCATVAL": self._pcatvals,
-            "RSRCRATE": self._rsrcrates,
-            "RSRCRCAT": self._rsrccats,
-            "ACTVCODE": self._actvcodes,
-            "TASKPRED": self._predecessors,
-            "TASKPROC": self._taskprocs,
-            "UDFVALUE": self._udfvalues,
-            "FINTMPL": self._fintmpls,
-            "NONWORK": self._nonworks,
-        }
-
-        # Dispatch table for handlers that need data parameter
-        data_handlers = {
-            "PROJECT": self._projects,
-            "PROJWBS": self._wbss,
-            "TASK": self._tasks,
-            "TASKRSRC": self._activityresources,
-            "TASKACTV": self._activitycodes,
-        }
-
-        if object_type in simple_handlers:
-            simple_handlers[object_type].add(params)
-        elif object_type in data_handlers:
-            data_handlers[object_type].add(params, self._data)
+        if object_type in self._simple_handlers:
+            self._simple_handlers[object_type].add(params)
+        elif object_type in self._data_handlers:
+            self._data_handlers[object_type].add(params, self._data)
 
     def summary(self):
         print("Number of activities: ", self.tasks.count)
@@ -368,6 +332,40 @@ class Reader:
         self._taskprocs = TaskProcs()
         self._fintmpls = FinTmpls()
         self._nonworks = NonWorks()
+        # Built once (not per record): create_object dispatch by object_type.
+        self._simple_handlers = {
+            "CURRTYPE": self._currencies,
+            "ROLES": self._roles,
+            "ACCOUNT": self._accounts,
+            "ROLERATE": self._rolerates,
+            "OBS": self._obss,
+            "RCATTYPE": self._rcattypes,
+            "UDFTYPE": self._udftypes,
+            "RCATVAL": self._rcatvals,
+            "CALENDAR": self._calendars,
+            "SCHEDOPTIONS": self._schedoptions,
+            "RSRC": self._resources,
+            "RSRCCURVDATA": self._rsrcurves,
+            "ACTVTYPE": self._acttypes,
+            "PCATTYPE": self._pcattypes,
+            "PROJPCAT": self._projpcats,
+            "PCATVAL": self._pcatvals,
+            "RSRCRATE": self._rsrcrates,
+            "RSRCRCAT": self._rsrccats,
+            "ACTVCODE": self._actvcodes,
+            "TASKPRED": self._predecessors,
+            "TASKPROC": self._taskprocs,
+            "UDFVALUE": self._udfvalues,
+            "FINTMPL": self._fintmpls,
+            "NONWORK": self._nonworks,
+        }
+        self._data_handlers = {
+            "PROJECT": self._projects,
+            "PROJWBS": self._wbss,
+            "TASK": self._tasks,
+            "TASKRSRC": self._activityresources,
+            "TASKACTV": self._activitycodes,
+        }
         self._data = Data()
         self._data.projects = self._projects
         self._data.wbss = self._wbss
@@ -395,6 +393,9 @@ class Reader:
             tag = row[0]
             if tag == "%T":
                 current_table = row[1]
+                # Reset headers per table: a table missing its %F then fails
+                # loud (ragged_row) instead of silently reusing prior headers.
+                current_headers = []
             elif tag == "%F":
                 current_headers = [r.strip() for r in row[1:]]
             elif tag == "%E":

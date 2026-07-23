@@ -623,5 +623,61 @@ class TestAnalysisNoDebugPrints(unittest.TestCase):
         self.assertEqual(output.strip(), "")  # Should be empty
 
 
+class TestReaderTaskReExport(unittest.TestCase):
+    """Code review: explicit imports must preserve the `Task` re-export.
+
+    The old wildcard import re-exported the singular `Task` class from
+    xerparser.reader; a downstream consumer imports it from there.
+    """
+
+    def test_task_is_importable_from_reader(self):
+        from xerparser.reader import Reader, Task
+        self.assertEqual(Task.__name__, 'Task')
+        self.assertTrue(callable(Reader))
+
+
+class TestReaderMissingHeaderFailsLoud(unittest.TestCase):
+    """Code review: current_headers resets per %T, so a table missing its
+    %F fails loud (ragged_row) instead of silently misaligning fields."""
+
+    def test_table_without_header_raises_ragged_row(self):
+        from xerparser.reader import Reader
+        from xerparser.exceptions import XerParseError
+
+        # PROJECT declares %F; the following TASK table omits it. Without the
+        # reset the TASK %R would silently zip against PROJECT's headers.
+        content = (
+            "ERMHDR\t8.0\t2021-11-02\tProject\n"
+            "%T\tPROJECT\n%F\tproj_id\tproj_short_name\n%R\t100\tP1\n"
+            "%T\tTASK\n%R\t1\t100\n%E\n"
+        )
+        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.xer', encoding='utf-8') as f:
+            f.write(content)
+            temp_file = f.name
+        try:
+            with self.assertRaises(XerParseError) as ctx:
+                Reader(temp_file)
+            self.assertEqual(ctx.exception.kind, 'ragged_row')
+        finally:
+            os.unlink(temp_file)
+
+
+class TestTaskExternalLateEndStripParity(unittest.TestCase):
+    """Code review: external_late_end_date must .strip() like
+    external_early_start_date so whitespace-wrapped values still parse."""
+
+    def setUp(self):
+        self.data = Data()
+
+    def test_late_end_date_with_whitespace_parses(self):
+        params = {
+            'task_id': '1', 'proj_id': '1', 'wbs_id': '1', 'clndr_id': '1',
+            'task_code': 'A1000', 'task_name': 'Test Task',
+            'external_late_end_date': ' 2023-12-31 17:00 ',
+        }
+        task = Task(params, self.data)
+        self.assertEqual(task.external_late_end_date, datetime(2023, 12, 31, 17, 0))
+
+
 if __name__ == '__main__':
     unittest.main()
