@@ -311,6 +311,11 @@ class Reader:
 
     def __init__(self, filename):
         self.file = filename
+        # Minimal bleed fix: these class-level lists accumulate across every
+        # Reader in the process (cross-file contamination + a memory leak in
+        # long-lived workers). Clear in place; full instance-scoping deferred.
+        WBS.obj_list.clear()
+        TaskPred.obj_list.clear()
         self._tasks = Tasks()
         self._predecessors = Predecessors()
         self._projects = Projects()

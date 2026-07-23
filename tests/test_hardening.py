@@ -13,6 +13,8 @@ import os
 import pytest
 
 from xerparser.exceptions import XerParseError
+from xerparser.model.classes.taskpred import TaskPred
+from xerparser.model.classes.wbs import WBS
 from xerparser.reader import Reader
 
 FIXTURES = os.path.join(os.path.dirname(__file__), "fixtures")
@@ -79,3 +81,16 @@ def test_ftb5_golden_parses_clean():
     """The false-positive control: a complete clean file raises nothing."""
     reader = Reader(fixture("golden.xer"))
     assert len(list(reader.activities)) > 0
+
+
+# --- Group 3: per-Reader obj_list reset (FT-B7) -------------------------------
+
+
+def test_ftb7_objlist_reset_between_readers():
+    """A second Reader resets the class-level WBS/TaskPred lists (no bleed)."""
+    Reader(fixture("golden.xer"))
+    Reader(fixture("enc_utf8_cjk.xer"))
+    # Sized to the second file alone (each clean mini file: 10 WBS / 19 preds);
+    # accumulation across Readers would give 20 / 38.
+    assert len(WBS.obj_list) == 10
+    assert len(TaskPred.obj_list) == 19
