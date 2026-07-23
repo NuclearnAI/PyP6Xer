@@ -311,9 +311,8 @@ class Reader:
 
     def __init__(self, filename):
         self.file = filename
-        # Minimal bleed fix: these class-level lists accumulate across every
-        # Reader in the process (cross-file contamination + a memory leak in
-        # long-lived workers). Clear in place; full instance-scoping deferred.
+        # These class-level lists accumulate across every Reader (cross-file
+        # bleed + a worker memory leak); clear in place. Full scoping deferred.
         WBS.obj_list.clear()
         TaskPred.obj_list.clear()
         self._tasks = Tasks()
@@ -355,42 +354,45 @@ class Reader:
         self._data.predecessors = self._predecessors
         with open(filename, "rb") as fh:
             text = _decode_xer_bytes(fh.read())
-        # A complete export always ends with an %E marker. Pre-scan for it so a
-        # short final row (a mid-row cut) reports as truncation, while a short
-        # row inside an otherwise-complete file reports as raggedness.
-        has_end_marker = any(line.startswith("%E") for line in text.splitlines())
+        # Classify corruption as we parse (csv-aware): long row = ragged; short
+        # row = ragged if a record follows, else truncation; no %E = truncated.
+        saw_end_marker = False
+        pending_short = None
         current_table = ""
         current_headers = []
         stream = csv.reader(io.StringIO(text), delimiter="\t")
         for row in stream:
             if not row:  # Skip empty rows
                 continue
-            if row[0] == "%T":
+            if pending_short is not None:
+                # A record follows the short row, so it was interior corruption.
+                table, line, detail = pending_short
+                raise XerParseError("ragged_row", detail, table, line)
+            tag = row[0]
+            if tag == "%T":
                 current_table = row[1]
-            elif row[0] == "%F":
+            elif tag == "%F":
                 current_headers = [r.strip() for r in row[1:]]
-            elif row[0] == "%R":
-                if len(row) - 1 != len(current_headers):
-                    if has_end_marker:
-                        raise XerParseError(
-                            "ragged_row",
-                            f"{len(row) - 1} fields vs {len(current_headers)} headers",
-                            current_table,
-                            stream.line_num,
-                        )
-                    raise XerParseError(
-                        "truncated", "file cut off mid-row (no %E end marker)"
-                    )
+            elif tag == "%E":
+                saw_end_marker = True
+            elif tag == "%R":
+                field_count = len(row) - 1
+                detail = f"{field_count} fields vs {len(current_headers)} headers"
+                if field_count > len(current_headers):
+                    raise XerParseError("ragged_row", detail, current_table, stream.line_num)
+                if field_count < len(current_headers):
+                    pending_short = (current_table, stream.line_num, detail)
+                    continue
                 zipped_record = dict(zip(current_headers, row[1:]))
                 try:
                     self.create_object(current_table, zipped_record)
-                except XerParseError:
-                    raise
                 except Exception as e:
                     raise XerParseError(
                         "malformed_row", str(e), current_table, stream.line_num
                     ) from e
-        if not has_end_marker:
+        if pending_short is not None:
+            raise XerParseError("truncated", "file cut off mid-row (no %E end marker)")
+        if not saw_end_marker:
             raise XerParseError("truncated", "missing %E end marker")
 
         # for line in content:
