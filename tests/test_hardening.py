@@ -8,6 +8,7 @@ Two axes:
 Fixtures under tests/fixtures/ are byte-identical to the MRE-side IT-2 corpus.
 """
 
+import codecs
 import os
 
 import pytest
@@ -15,7 +16,7 @@ import pytest
 from xerparser.exceptions import XerParseError
 from xerparser.model.classes.taskpred import TaskPred
 from xerparser.model.classes.wbs import WBS
-from xerparser.reader import Reader
+from xerparser.reader import Reader, _decode_xer_bytes
 
 FIXTURES = os.path.join(os.path.dirname(__file__), "fixtures")
 
@@ -84,6 +85,26 @@ def test_ftb5_golden_parses_clean():
     reader = Reader(fixture("golden.xer"))
     assert len(list(reader.activities)) > 0
     assert reader.truncated is False
+
+
+# --- Group 4: decode-ladder rungs (BOM / never-fail floor) --------------------
+
+
+def test_decode_utf8_bom_stripped():
+    """A utf-8 BOM file decodes via the utf-8-sig rung (BOM stripped, text kept)."""
+    assert _decode_xer_bytes(codecs.BOM_UTF8 + "café".encode("utf-8")) == "café"
+
+
+def test_decode_utf16_bom():
+    """A utf-16 file (e.g. re-saved through Notepad/Excel) decodes, not mojibake."""
+    # str.encode("utf-16") prepends the BOM the ladder sniffs for.
+    assert _decode_xer_bytes("café".encode("utf-16")) == "café"
+
+
+def test_decode_replace_floor_substitutes_never_deletes():
+    """A byte undefined in both utf-8 and cp1252 hits the errors='replace' floor."""
+    # 0x81 is an invalid utf-8 start byte AND unmapped in strict cp1252.
+    assert _decode_xer_bytes(b"\x81") == "�"  # substituted, not deleted; no raise
 
 
 # --- Group 3: per-Reader obj_list reset (FT-B7) -------------------------------
