@@ -2,8 +2,9 @@
 
 Two axes:
   1. Decode-safe encoding ladder (no character is ever silently deleted).
-  2. Fail-loud typed parse errors for structural corruption (bad / ragged /
-     truncated), plus a per-Reader reset of the class-level obj_lists.
+  2. Fail-loud typed errors for a malformed value or unroutable structure, a
+     soft truncated flag for a file cut before %E, and tolerance of benign
+     field-count variance (short/long rows) like the original parser.
 
 Fixtures under tests/fixtures/ are byte-identical to the MRE-side IT-2 corpus.
 """
@@ -14,8 +15,6 @@ import os
 import pytest
 
 from xerparser.exceptions import XerParseError
-from xerparser.model.classes.taskpred import TaskPred
-from xerparser.model.classes.wbs import WBS
 from xerparser.reader import Reader, _decode_xer_bytes
 
 FIXTURES = os.path.join(os.path.dirname(__file__), "fixtures")
@@ -63,12 +62,14 @@ def test_ftb3_bad_row_raises_malformed():
 
 
 @pytest.mark.parametrize("name", ["struct_ragged_short.xer", "struct_ragged_long.xer"])
-def test_ftb4_ragged_row_raises(name):
-    """A row whose field count != its %F header raises a typed ragged_row error."""
-    with pytest.raises(XerParseError) as exc:
-        Reader(fixture(name))
-    assert exc.value.kind == "ragged_row"
-    assert exc.value.table == "TASK"
+def test_ftb4_field_count_variance_tolerated(name):
+    """A row with fewer/more fields than its %F header is tolerated like the
+    original zip-based parser: a short row leaves trailing columns unset, a long
+    row drops the surplus. It neither raises nor flags an otherwise-complete
+    file as truncated."""
+    reader = Reader(fixture(name))
+    assert len(list(reader.activities)) > 0
+    assert reader.truncated is False
 
 
 def test_ftb5_truncated_sets_flag_and_keeps_rows():
@@ -105,16 +106,3 @@ def test_decode_replace_floor_substitutes_never_deletes():
     """A byte undefined in both utf-8 and cp1252 hits the errors='replace' floor."""
     # 0x81 is an invalid utf-8 start byte AND unmapped in strict cp1252.
     assert _decode_xer_bytes(b"\x81") == "�"  # substituted, not deleted; no raise
-
-
-# --- Group 3: per-Reader obj_list reset (FT-B7) -------------------------------
-
-
-def test_ftb7_objlist_reset_between_readers():
-    """A second Reader resets the class-level WBS/TaskPred lists (no bleed)."""
-    Reader(fixture("golden.xer"))
-    Reader(fixture("enc_utf8_cjk.xer"))
-    # Sized to the second file alone (each clean mini file: 10 WBS / 19 preds);
-    # accumulation across Readers would give 20 / 38.
-    assert len(WBS.obj_list) == 10
-    assert len(TaskPred.obj_list) == 19

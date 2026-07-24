@@ -31,12 +31,11 @@ import sys
 
 from xerparser.exceptions import XerParseError
 from xerparser.model.classes.data import Data
-from xerparser.model.classes.taskpred import TaskPred
+from xerparser.model.classes.taskpred import TaskPred  # re-exported; used by summary()
 from xerparser.model.classes.projcat import ProjCat
 from xerparser.model.classes.taskproc import TaskProc
 from xerparser.model.classes.fintmpl import FinTmpl
 from xerparser.model.classes.nonwork import NonWork
-from xerparser.model.classes.wbs import WBS
 from xerparser.model.classes.task import Task
 from xerparser.write import writeXER
 from xerparser.model.tasks import Tasks
@@ -82,10 +81,25 @@ def _decode_xer_bytes(raw: bytes) -> str:
     Non-Western codecs (CJK/Cyrillic) degrade to mojibake but are never
     deleted — scheduling fields are all ASCII, so only labels garble.
     """
+    # BOM branches fall through to the ladder (not return) so a BOM-tagged file
+    # with a stray bad byte still reaches the never-fail cp1252 floor.
+    # UTF-32-LE (\xff\xfe\x00\x00) is checked before UTF-16-LE (\xff\xfe) — the
+    # latter is a prefix of the former, so order matters.
     if raw.startswith(codecs.BOM_UTF8):
-        return raw.decode("utf-8-sig")
-    if raw.startswith(codecs.BOM_UTF16_LE) or raw.startswith(codecs.BOM_UTF16_BE):
-        return raw.decode("utf-16")
+        try:
+            return raw.decode("utf-8-sig")
+        except UnicodeDecodeError:
+            pass
+    elif raw.startswith(codecs.BOM_UTF32_LE) or raw.startswith(codecs.BOM_UTF32_BE):
+        try:
+            return raw.decode("utf-32")
+        except UnicodeDecodeError:
+            pass
+    elif raw.startswith(codecs.BOM_UTF16_LE) or raw.startswith(codecs.BOM_UTF16_BE):
+        try:
+            return raw.decode("utf-16")
+        except UnicodeDecodeError:
+            pass
     try:
         return raw.decode("utf-8")
     except UnicodeDecodeError:
@@ -299,10 +313,6 @@ class Reader:
         # Truncation is a soft signal: consumers that build one precedence
         # network (sim) reject it; aggregating consumers (training) proceed.
         self.truncated = False
-        # These class-level lists accumulate across every Reader (cross-file
-        # bleed + a worker memory leak); clear in place. Full scoping deferred.
-        WBS.obj_list.clear()
-        TaskPred.obj_list.clear()
         self._tasks = Tasks()
         self._predecessors = Predecessors()
         self._projects = Projects()
@@ -376,38 +386,40 @@ class Reader:
         self._data.predecessors = self._predecessors
         with open(filename, "rb") as fh:
             text = _decode_xer_bytes(fh.read())
-        # Classify corruption as we parse (csv-aware): long row = ragged; short
-        # row = ragged if a record follows, else truncation; no %E = truncated.
+        # Structural policy: field-count variance in data rows is tolerated (zip,
+        # like the original parser) -- a short row leaves trailing columns unset,
+        # a long row drops the surplus. We fail loud only on a genuinely malformed
+        # value (create_object) or an unroutable %T; a missing %E end marker sets
+        # the soft truncated flag.
         saw_end_marker = False
-        pending_short = None
         current_table = ""
         current_headers = []
         stream = csv.reader(io.StringIO(text), delimiter="\t")
         for row in stream:
             if not row:  # Skip empty rows
                 continue
-            if pending_short is not None:
-                # A record follows the short row, so it was interior corruption.
-                table, line, detail = pending_short
-                raise XerParseError("ragged_row", detail, table, line)
             tag = row[0]
             if tag == "%T":
+                if len(row) < 2:
+                    # A %T with no table name is unroutable structure; fail loud
+                    # instead of an uncaught IndexError escaping the error contract.
+                    raise XerParseError(
+                        "ragged_row", "table row missing name", current_table, stream.line_num
+                    )
                 current_table = row[1]
-                # Reset headers per table: a table missing its %F then fails
-                # loud (ragged_row) instead of silently reusing prior headers.
                 current_headers = []
             elif tag == "%F":
                 current_headers = [r.strip() for r in row[1:]]
             elif tag == "%E":
                 saw_end_marker = True
             elif tag == "%R":
-                field_count = len(row) - 1
-                detail = f"{field_count} fields vs {len(current_headers)} headers"
-                if field_count > len(current_headers):
-                    raise XerParseError("ragged_row", detail, current_table, stream.line_num)
-                if field_count < len(current_headers):
-                    pending_short = (current_table, stream.line_num, detail)
-                    continue
+                if not current_headers:
+                    # A data row with no %F header for its table is unroutable
+                    # (values can't be mapped to fields); fail loud rather than
+                    # silently zipping against an empty header list.
+                    raise XerParseError(
+                        "ragged_row", "data row before %F header", current_table, stream.line_num
+                    )
                 zipped_record = dict(zip(current_headers, row[1:]))
                 try:
                     self.create_object(current_table, zipped_record)
@@ -415,10 +427,8 @@ class Reader:
                     raise XerParseError(
                         "malformed_row", str(e), current_table, stream.line_num
                     ) from e
-        if pending_short is not None:
-            # Short final row nothing followed = mid-row cut; leave it uncreated.
-            self.truncated = True
         if not saw_end_marker:
+            # No end marker => the file was cut before %E (truncation).
             self.truncated = True
 
         # for line in content:

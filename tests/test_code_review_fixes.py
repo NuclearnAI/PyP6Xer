@@ -194,10 +194,9 @@ class TestTaskTotalFloatProperty(unittest.TestCase):
         self.assertEqual(task.totalfloat, 10.0)
 
     def test_totalfloat_with_zero(self):
-        """Test totalfloat with zero value."""
+        """Zero total float is a real value (critical-path activities), not missing data."""
         task = self._create_task_with_float(0)
-        # 0 is falsy, so should return None based on the implementation
-        self.assertIsNone(task.totalfloat)
+        self.assertEqual(task.totalfloat, 0.0)
 
     def test_totalfloat_with_none(self):
         """Test totalfloat with None value."""
@@ -410,7 +409,6 @@ class TestReaderExplicitImports(unittest.TestCase):
             Accounts,
             Calendars,
             Currencies,
-            WBS,
             TaskPred,
         )
 
@@ -418,7 +416,7 @@ class TestReaderExplicitImports(unittest.TestCase):
         self.assertTrue(callable(Reader))
         self.assertTrue(callable(Tasks))
         self.assertTrue(callable(Projects))
-        self.assertTrue(callable(WBS))
+        self.assertTrue(callable(WBSs))
         self.assertTrue(callable(TaskPred))
 
     def test_reader_can_be_instantiated(self):

@@ -258,7 +258,7 @@ class Task:
 
     @property
     def totalfloat(self):
-        if self.total_float_hr_cnt:
+        if self.total_float_hr_cnt is not None:
             tf = self.total_float_hr_cnt / 8.0
         else:
             return None
