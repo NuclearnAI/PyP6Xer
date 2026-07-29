@@ -88,6 +88,28 @@ def test_ftb5_golden_parses_clean():
     assert reader.truncated is False
 
 
+def test_ftb6_quote_char_in_value_does_not_merge_rows(tmp_path):
+    """XER is plain TSV with no quoting convention: a `"` in a value must be a
+    literal, not a CSV quote that swallows following rows. Under default csv
+    quoting these three rows collapse into one (silent activity loss)."""
+    content = (
+        "ERMHDR\t8.0\t2021-11-02\tProject\n"
+        "%T\tTASK\n"
+        "%F\ttask_id\ttask_code\ttask_name\n"
+        '%R\t1\tA1\t"Downpower phase\n'
+        "%R\t2\tA2\tCooldown to Mode 5\n"
+        '%R\t3\tA3\tReactor "trip" test\n'
+        "%E\n"
+    )
+    path = tmp_path / "quotes.xer"
+    path.write_text(content, encoding="utf-8")
+    reader = Reader(str(path))
+    names = task_names(reader)
+    assert len(names) == 3
+    assert '"Downpower phase' in names
+    assert 'Reactor "trip" test' in names
+
+
 # --- Group 4: decode-ladder rungs (BOM / never-fail floor) --------------------
 
 

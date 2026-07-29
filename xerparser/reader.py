@@ -394,7 +394,12 @@ class Reader:
         saw_end_marker = False
         current_table = ""
         current_headers = []
-        stream = csv.reader(io.StringIO(text), delimiter="\t")
+        # XER is plain TSV with no quoting convention; QUOTE_NONE stops a value
+        # that contains a `"` from being read as a quoted field and silently
+        # swallowing following rows. newline="" lets csv handle line endings.
+        stream = csv.reader(
+            io.StringIO(text, newline=""), delimiter="\t", quoting=csv.QUOTE_NONE
+        )
         for row in stream:
             if not row:  # Skip empty rows
                 continue
