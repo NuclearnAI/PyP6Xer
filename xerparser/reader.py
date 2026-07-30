@@ -74,7 +74,7 @@ csv.field_size_limit(sys.maxsize)
 def _decode_xer_bytes(raw: bytes) -> str:
     """Decode raw XER bytes once, preserving every character.
 
-    Ladder: BOM (utf-8/utf-16) -> utf-8 strict -> cp1252 strict ->
+    Ladder: BOM (utf-8/utf-32/utf-16) -> utf-8 strict -> cp1252 strict ->
     cp1252 with replacement (never-fail floor). utf-8 is tried before cp1252
     because its strict multi-byte structure is a reliable detector, so genuine
     utf-8 files decode correctly; cp1252 is P6's default for Western text.
@@ -444,8 +444,10 @@ class Reader:
         #         self.create_object(current_table, line_lst[1:])
 
     def get_num_lines(self, file_path):
-        with open(file_path, "r+") as fp:
-            buf = mmap.mmap(fp.fileno(), 0)
+        # Read-only open + ACCESS_READ so counting lines never requires write
+        # permission on the file.
+        with open(file_path, "rb") as fp:
+            buf = mmap.mmap(fp.fileno(), 0, access=mmap.ACCESS_READ)
             lines = 0
             while buf.readline():
                 lines += 1

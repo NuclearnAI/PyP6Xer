@@ -128,3 +128,23 @@ def test_decode_replace_floor_substitutes_never_deletes():
     """A byte undefined in both utf-8 and cp1252 hits the errors='replace' floor."""
     # 0x81 is an invalid utf-8 start byte AND unmapped in strict cp1252.
     assert _decode_xer_bytes(b"\x81") == "�"  # substituted, not deleted; no raise
+
+
+# --- Group 5: error-message + read-only hygiene -------------------------------
+
+
+def test_parse_error_message_keeps_line_when_table_unknown():
+    """A structural error before any table (empty table) still reports its line."""
+    err = XerParseError("ragged_row", "table row missing name", "", 7)
+    assert "line 7" in str(err)
+
+
+def test_get_num_lines_works_on_read_only_file(tmp_path):
+    """get_num_lines counts lines without needing write permission on the file."""
+    import os
+
+    path = tmp_path / "ro.xer"
+    path.write_text("a\nb\nc\n", encoding="utf-8")
+    os.chmod(path, 0o444)  # read-only
+    reader = object.__new__(Reader)  # bypass __init__; get_num_lines doesn't use self
+    assert reader.get_num_lines(str(path)) == 3

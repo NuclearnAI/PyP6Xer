@@ -31,5 +31,12 @@ class XerParseError(ValueError):
         self.table = table
         self.line = line
         self.detail = detail
-        loc = f" in {table} at line {line}" if table else ""
+        # Build the location from whichever parts are known: a structural error
+        # before any table has started (empty table) still reports its line.
+        parts = []
+        if table:
+            parts.append(f"in {table}")
+        if line:
+            parts.append(f"at line {line}")
+        loc = (" " + " ".join(parts)) if parts else ""
         super().__init__(f"{kind}{loc}: {detail}")
