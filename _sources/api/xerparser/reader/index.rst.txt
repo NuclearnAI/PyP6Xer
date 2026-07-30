@@ -1,0 +1,243 @@
+xerparser.reader
+================
+
+.. py:module:: xerparser.reader
+
+.. autoapi-nested-parse::
+
+   This file starts the process of reading and parsing xer files
+
+
+
+Classes
+-------
+
+.. autoapisummary::
+
+   xerparser.reader.Reader
+
+
+Module Contents
+---------------
+
+.. py:class:: Reader(filename)
+
+   Reader class is the main parser for xer files. It takes a file path as a parameter.
+   The read records are parsed into classes depending on their types like activities, wbs,etc.
+
+   :param <file>: is an xer file that need to be parsed
+   :return: Reader object that contains collection of parsed records
+   :Example:
+
+   from xerparser.reader import Reader
+   file = Reader('file.xer')
+
+
+
+   .. py:attribute:: current_table
+      :value: ''
+
+
+
+   .. py:attribute:: current_headers
+      :value: []
+
+
+
+   .. py:method:: write(filename=None)
+
+
+   .. py:method:: create_object(object_type, params)
+
+      Create and add an object to the appropriate collection based on object type.
+
+      :param object_type: The XER record type (e.g., 'PROJECT', 'TASK', etc.)
+      :param params: Dictionary of field values for the record
+
+      :returns: None
+
+
+
+   .. py:method:: summary()
+
+
+   .. py:property:: projects
+      :type: xerparser.model.projects.Projects
+
+
+      Projects
+
+      :return: list of all projects contained in the xer file
+
+      todo:: text
+
+
+   .. py:property:: activities
+      :type: xerparser.model.tasks.Tasks
+
+
+      Property to retrieve list of tasks
+      Returns: list of tasks
+
+
+   .. py:property:: wbss
+      :type: xerparser.model.wbss.WBSs
+
+
+      Property to return all wbs elements in the parsed file
+      :returns: list of wbs elements
+
+
+   .. py:property:: relations
+      :type: xerparser.model.predecessors.Predecessors
+
+
+      Property to retrieve relationships from parsed file
+      :returns: list of relations
+
+
+   .. py:property:: resources
+      :type: xerparser.model.resources.Resources
+
+
+      Property to return a list of resources from parsed file
+      :returns: list of resources of type Resources
+
+
+   .. py:property:: accounts
+      :type: xerparser.model.accounts.Accounts
+
+
+      Property to return a list of accounts from parsed files
+      :returns: list of accounts of type Accounts
+
+
+   .. py:property:: activitycodes
+      :type: xerparser.model.activitycodes.ActivityCodes
+
+
+      Property to return a list of activity codes from parsed files
+      :returns: list of accounts of type ActivityCode
+
+
+   .. py:property:: actvcodes
+      :type: xerparser.model.taskactvs.TaskActvs
+
+
+
+   .. py:property:: acttypes
+      :type: xerparser.model.acttypes.ActTypes
+
+
+
+   .. py:property:: calendars
+      :type: xerparser.model.calendars.Calendars
+
+
+
+   .. py:property:: currencies
+      :type: xerparser.model.currencies.Currencies
+
+
+
+   .. py:property:: obss
+      :type: xerparser.model.obss.OBSs
+
+
+
+   .. py:property:: rcattypes
+      :type: xerparser.model.rcattypes.RCatTypes
+
+
+
+   .. py:property:: rcatvals
+      :type: xerparser.model.rcatvals.RCatVals
+
+
+
+   .. py:property:: rolerates
+      :type: xerparser.model.rolerates.RoleRates
+
+
+
+   .. py:property:: roles
+      :type: xerparser.model.roles.Roles
+
+
+
+   .. py:property:: resourcecurves
+      :type: xerparser.model.rsrccurves.ResourceCurves
+
+
+
+   .. py:property:: resourcerates
+      :type: xerparser.model.rsrcrates.ResourceRates
+
+
+
+   .. py:property:: resourcecategories
+      :type: xerparser.model.rsrccats.ResourceCategories
+
+
+
+   .. py:property:: scheduleoptions
+      :type: xerparser.model.schedoptions.SchedOptions
+
+
+
+   .. py:property:: activityresources
+      :type: xerparser.model.activitiyresources.ActivityResources
+
+
+
+   .. py:property:: udfvalues
+      :type: xerparser.model.udfvalues.UDFValues
+
+
+
+   .. py:property:: udftypes
+      :type: xerparser.model.udftypes.UDFTypes
+
+
+
+   .. py:property:: pcattypes
+      :type: List[xerparser.model.pacttypes.PCatTypes]
+
+
+
+   .. py:property:: pcatvals
+      :type: List[xerparser.model.pcatvals.PCatVals]
+
+
+
+   .. py:property:: projpcats
+      :type: List[xerparser.model.classes.projcat.ProjCat]
+
+
+
+   .. py:property:: taskprocs
+      :type: List[xerparser.model.classes.taskproc.TaskProc]
+
+
+
+   .. py:property:: fintmpls
+      :type: List[xerparser.model.classes.fintmpl.FinTmpl]
+
+
+
+   .. py:property:: nonworks
+      :type: List[xerparser.model.classes.nonwork.NonWork]
+
+
+
+   .. py:attribute:: file
+
+
+   .. py:attribute:: truncated
+      :value: False
+
+
+
+   .. py:method:: get_num_lines(file_path)
+
+

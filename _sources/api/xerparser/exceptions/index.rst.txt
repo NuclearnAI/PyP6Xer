@@ -1,0 +1,46 @@
+xerparser.exceptions
+====================
+
+.. py:module:: xerparser.exceptions
+
+
+Exceptions
+----------
+
+.. autoapisummary::
+
+   xerparser.exceptions.XerParseError
+
+
+Module Contents
+---------------
+
+.. py:exception:: XerParseError(kind, detail, table=None, line=None)
+
+   Bases: :py:obj:`ValueError`
+
+
+   A structural corruption detected while parsing an XER file.
+
+   Subclasses ValueError so existing ValueError->4xx mappings keep working.
+   ``kind`` is the stable cross-consumer contract:
+   "malformed_row" | "ragged_row". Truncation is no longer a kind — it is
+   surfaced as a ``Reader.truncated`` flag so consumers set their own policy.
+
+
+   .. py:attribute:: kind
+
+
+   .. py:attribute:: table
+      :value: None
+
+
+
+   .. py:attribute:: line
+      :value: None
+
+
+
+   .. py:attribute:: detail
+
+
