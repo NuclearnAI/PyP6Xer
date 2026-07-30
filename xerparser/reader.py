@@ -23,15 +23,91 @@ This file starts the process of reading and parsing xer files
 """
 
 import csv
+import io
 import mmap
 import codecs
-from xerparser import *
 from typing import List
-from xerparser.model.classes.data import Data
-from xerparser.write import writeXER
 import sys
 
+from xerparser.exceptions import XerParseError
+from xerparser.model.classes.data import Data
+from xerparser.model.classes.taskpred import TaskPred  # re-exported; used by summary()
+from xerparser.model.classes.projcat import ProjCat
+from xerparser.model.classes.taskproc import TaskProc
+from xerparser.model.classes.fintmpl import FinTmpl
+from xerparser.model.classes.nonwork import NonWork
+from xerparser.model.classes.task import Task
+from xerparser.write import writeXER
+from xerparser.model.tasks import Tasks
+from xerparser.model.predecessors import Predecessors
+from xerparser.model.projects import Projects
+from xerparser.model.wbss import WBSs
+from xerparser.model.resources import Resources
+from xerparser.model.accounts import Accounts
+from xerparser.model.activitycodes import ActivityCodes
+from xerparser.model.acttypes import ActTypes
+from xerparser.model.calendars import Calendars
+from xerparser.model.currencies import Currencies
+from xerparser.model.obss import OBSs
+from xerparser.model.rcattypes import RCatTypes
+from xerparser.model.rcatvals import RCatVals
+from xerparser.model.rolerates import RoleRates
+from xerparser.model.roles import Roles
+from xerparser.model.rsrccurves import ResourceCurves
+from xerparser.model.rsrcrates import ResourceRates
+from xerparser.model.rsrccats import ResourceCategories
+from xerparser.model.schedoptions import SchedOptions
+from xerparser.model.activitiyresources import ActivityResources
+from xerparser.model.udfvalues import UDFValues
+from xerparser.model.udftypes import UDFTypes
+from xerparser.model.taskactvs import TaskActvs
+from xerparser.model.pacttypes import PCatTypes
+from xerparser.model.pcatvals import PCatVals
+from xerparser.model.projcats import ProjCats
+from xerparser.model.taskprocs import TaskProcs
+from xerparser.model.fintmpls import FinTmpls
+from xerparser.model.nonworks import NonWorks
+
 csv.field_size_limit(sys.maxsize)
+
+
+def _decode_xer_bytes(raw: bytes) -> str:
+    """Decode raw XER bytes once, preserving every character.
+
+    Ladder: BOM (utf-8/utf-32/utf-16) -> utf-8 strict -> cp1252 strict ->
+    cp1252 with replacement (never-fail floor). utf-8 is tried before cp1252
+    because its strict multi-byte structure is a reliable detector, so genuine
+    utf-8 files decode correctly; cp1252 is P6's default for Western text.
+    Non-Western codecs (CJK/Cyrillic) degrade to mojibake but are never
+    deleted — scheduling fields are all ASCII, so only labels garble.
+    """
+    # BOM branches fall through to the ladder (not return) so a BOM-tagged file
+    # with a stray bad byte still reaches the never-fail cp1252 floor.
+    # UTF-32-LE (\xff\xfe\x00\x00) is checked before UTF-16-LE (\xff\xfe) — the
+    # latter is a prefix of the former, so order matters.
+    if raw.startswith(codecs.BOM_UTF8):
+        try:
+            return raw.decode("utf-8-sig")
+        except UnicodeDecodeError:
+            pass
+    elif raw.startswith(codecs.BOM_UTF32_LE) or raw.startswith(codecs.BOM_UTF32_BE):
+        try:
+            return raw.decode("utf-32")
+        except UnicodeDecodeError:
+            pass
+    elif raw.startswith(codecs.BOM_UTF16_LE) or raw.startswith(codecs.BOM_UTF16_BE):
+        try:
+            return raw.decode("utf-16")
+        except UnicodeDecodeError:
+            pass
+    try:
+        return raw.decode("utf-8")
+    except UnicodeDecodeError:
+        pass
+    try:
+        return raw.decode("cp1252")
+    except UnicodeDecodeError:
+        return raw.decode("cp1252", errors="replace")
 
 
 class Reader:
@@ -58,72 +134,21 @@ class Reader:
 
     def create_object(self, object_type, params):
         """
+        Create and add an object to the appropriate collection based on object type.
 
         Args:
-            object_type:
-            params:
+            object_type: The XER record type (e.g., 'PROJECT', 'TASK', etc.)
+            params: Dictionary of field values for the record
 
         Returns:
-
+            None
         """
-        if object_type.strip() == "CURRTYPE":
-            self._currencies.add(params)
-        elif object_type.strip() == "ROLES":
-            self._roles.add(params)
-        elif object_type.strip() == "ACCOUNT":
-            self._accounts.add(params)
-        elif object_type.strip() == "ROLERATE":
-            self._rolerates.add(params)
-        elif object_type.strip() == "OBS":
-            self._obss.add(params)
-        elif object_type.strip() == "RCATTYPE":
-            self._rcattypes.add(params)
-        elif object_type.strip() == "UDFTYPE":
-            self._udftypes.add(params)
-        elif object_type.strip() == "RCATVAL":
-            self._rcatvals.add(params)
-        elif object_type.strip() == "PROJECT":
-            self._projects.add(params, self._data)
-        elif object_type.strip() == "CALENDAR":
-            self._calendars.add(params)
-        elif object_type.strip() == "SCHEDOPTIONS":
-            self._schedoptions.add(params)
-        elif object_type.strip() == "PROJWBS":
-            self._wbss.add(params, self._data)
-        elif object_type.strip() == "RSRC":
-            self._resources.add(params)
-        elif object_type.strip() == "RSRCCURVDATA":
-            self._rsrcurves.add(params)
-        elif object_type.strip() == "ACTVTYPE":
-            self._acttypes.add(params)
-        elif object_type.strip() == "PCATTYPE":
-            self._pcattypes.add(params)
-        elif object_type.strip() == "PROJPCAT":
-            self._projpcats.add(params)
-        elif object_type.strip() == "PCATVAL":
-            self._pcatvals.add(params)
-        elif object_type.strip() == "RSRCRATE":
-            self._rsrcrates.add(params)
-        elif object_type.strip() == "RSRCRCAT":
-            self._rsrccats.add(params)
-        elif object_type.strip() == "TASK":
-            self._tasks.add(params, self._data)
-        elif object_type.strip() == "ACTVCODE":
-            self._actvcodes.add(params)
-        elif object_type.strip() == "TASKPRED":
-            self._predecessors.add(params)
-        elif object_type.strip() == "TASKRSRC":
-            self._activityresources.add(params, self._data)
-        elif object_type.strip() == "TASKPROC":
-            self._taskprocs.add(params)
-        elif object_type.strip() == "TASKACTV":
-            self._activitycodes.add(params, self._data)
-        elif object_type.strip() == "UDFVALUE":
-            self._udfvalues.add(params)
-        elif object_type.strip() == "FINTMPL":
-            self._fintmpls.add(params)
-        elif object_type.strip() == "NONWORK":
-            self._nonworks.add(params)
+        object_type = object_type.strip()
+
+        if object_type in self._simple_handlers:
+            self._simple_handlers[object_type].add(params)
+        elif object_type in self._data_handlers:
+            self._data_handlers[object_type].add(params, self._data)
 
     def summary(self):
         print("Number of activities: ", self.tasks.count)
@@ -285,6 +310,9 @@ class Reader:
 
     def __init__(self, filename):
         self.file = filename
+        # Truncation is a soft signal: consumers that build one precedence
+        # network (sim) reject it; aggregating consumers (training) proceed.
+        self.truncated = False
         self._tasks = Tasks()
         self._predecessors = Predecessors()
         self._projects = Projects()
@@ -314,6 +342,40 @@ class Reader:
         self._taskprocs = TaskProcs()
         self._fintmpls = FinTmpls()
         self._nonworks = NonWorks()
+        # Built once (not per record): create_object dispatch by object_type.
+        self._simple_handlers = {
+            "CURRTYPE": self._currencies,
+            "ROLES": self._roles,
+            "ACCOUNT": self._accounts,
+            "ROLERATE": self._rolerates,
+            "OBS": self._obss,
+            "RCATTYPE": self._rcattypes,
+            "UDFTYPE": self._udftypes,
+            "RCATVAL": self._rcatvals,
+            "CALENDAR": self._calendars,
+            "SCHEDOPTIONS": self._schedoptions,
+            "RSRC": self._resources,
+            "RSRCCURVDATA": self._rsrcurves,
+            "ACTVTYPE": self._acttypes,
+            "PCATTYPE": self._pcattypes,
+            "PROJPCAT": self._projpcats,
+            "PCATVAL": self._pcatvals,
+            "RSRCRATE": self._rsrcrates,
+            "RSRCRCAT": self._rsrccats,
+            "ACTVCODE": self._actvcodes,
+            "TASKPRED": self._predecessors,
+            "TASKPROC": self._taskprocs,
+            "UDFVALUE": self._udfvalues,
+            "FINTMPL": self._fintmpls,
+            "NONWORK": self._nonworks,
+        }
+        self._data_handlers = {
+            "PROJECT": self._projects,
+            "PROJWBS": self._wbss,
+            "TASK": self._tasks,
+            "TASKRSRC": self._activityresources,
+            "TASKACTV": self._activitycodes,
+        }
         self._data = Data()
         self._data.projects = self._projects
         self._data.wbss = self._wbss
@@ -322,23 +384,57 @@ class Reader:
         self._data.taskresource = self._activityresources
         self._data.taskactvcodes = self._activitycodes
         self._data.predecessors = self._predecessors
-        with codecs.open(filename, encoding="utf-8", errors="ignore") as tsvfile:
-            stream = csv.reader(tsvfile, delimiter="\t")
-            for row in stream:
+        with open(filename, "rb") as fh:
+            text = _decode_xer_bytes(fh.read())
+        # Structural policy: field-count variance in data rows is tolerated (zip,
+        # like the original parser) -- a short row leaves trailing columns unset,
+        # a long row drops the surplus. We fail loud only on a genuinely malformed
+        # value (create_object) or an unroutable %T; a missing %E end marker sets
+        # the soft truncated flag.
+        saw_end_marker = False
+        current_table = ""
+        current_headers = []
+        # XER is plain TSV with no quoting convention; QUOTE_NONE stops a value
+        # that contains a `"` from being read as a quoted field and silently
+        # swallowing following rows. newline="" lets csv handle line endings.
+        stream = csv.reader(
+            io.StringIO(text, newline=""), delimiter="\t", quoting=csv.QUOTE_NONE
+        )
+        for row in stream:
+            if not row:  # Skip empty rows
+                continue
+            tag = row[0]
+            if tag == "%T":
+                if len(row) < 2:
+                    # A %T with no table name is unroutable structure; fail loud
+                    # instead of an uncaught IndexError escaping the error contract.
+                    raise XerParseError(
+                        "ragged_row", "table row missing name", current_table, stream.line_num
+                    )
+                current_table = row[1]
+                current_headers = []
+            elif tag == "%F":
+                current_headers = [r.strip() for r in row[1:]]
+            elif tag == "%E":
+                saw_end_marker = True
+            elif tag == "%R":
+                if not current_headers:
+                    # A data row with no %F header for its table is unroutable
+                    # (values can't be mapped to fields); fail loud rather than
+                    # silently zipping against an empty header list.
+                    raise XerParseError(
+                        "ragged_row", "data row before %F header", current_table, stream.line_num
+                    )
+                zipped_record = dict(zip(current_headers, row[1:]))
                 try:
-                    if not row:  # Skip empty rows
-                        Warning("Empty row detected on row %s", stream.line_num)
-                        continue
-                    if row[0] == "%T":
-                        current_table = row[1]
-                    elif row[0] == "%F":
-                        current_headers = [r.strip() for r in row[1:]]
-                    elif row[0] == "%R":
-                        zipped_record = dict(zip(current_headers, row[1:]))
-                        self.create_object(current_table, zipped_record)
+                    self.create_object(current_table, zipped_record)
                 except Exception as e:
-                    print("Error reading line %s: %s", stream.line_num, e)
-                    raise e
+                    raise XerParseError(
+                        "malformed_row", str(e), current_table, stream.line_num
+                    ) from e
+        if not saw_end_marker:
+            # No end marker => the file was cut before %E (truncation).
+            self.truncated = True
 
         # for line in content:
         #     line_lst = line.split('\t')
@@ -348,9 +444,12 @@ class Reader:
         #         self.create_object(current_table, line_lst[1:])
 
     def get_num_lines(self, file_path):
-        fp = open(file_path, "r+")
-        buf = mmap.mmap(fp.fileno(), 0)
-        lines = 0
-        while buf.readline():
-            lines += 1
+        # Read-only open + ACCESS_READ so counting lines never requires write
+        # permission on the file.
+        with open(file_path, "rb") as fp:
+            buf = mmap.mmap(fp.fileno(), 0, access=mmap.ACCESS_READ)
+            lines = 0
+            while buf.readline():
+                lines += 1
+            buf.close()
         return lines
