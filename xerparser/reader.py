@@ -110,6 +110,38 @@ def _decode_xer_bytes(raw: bytes) -> str:
         return raw.decode("cp1252", errors="replace")
 
 
+def _quote_run(text: str, from_end: bool = False) -> int:
+    stripped = text.rstrip('"') if from_end else text.lstrip('"')
+    return len(text) - len(stripped)
+
+
+def _rejoin_quoted_values(values: List[str], expected: int) -> List[str]:
+    """Rejoin P6's quote-wrapped, tab-containing values that a tab split cut apart.
+
+    P6 wraps only tab-containing text in quotes and doubles inner quotes, so an
+    odd quote run opens or closes a wrapped span; an even run is literal text.
+    A span may only absorb as many pieces as the row has surplus fields.
+    """
+    out: List[str] = []
+    i = 0
+    while i < len(values):
+        surplus = (len(values) - i) - (expected - len(out))
+        piece = values[i]
+        close = None
+        if surplus > 0 and _quote_run(piece) % 2 == 1:
+            for j in range(i + 1, min(i + surplus, len(values) - 1) + 1):
+                if _quote_run(values[j], from_end=True) % 2 == 1:
+                    close = j
+                    break
+        if close is None:
+            out.append(piece)
+            i += 1
+        else:
+            out.append("\t".join(values[i : close + 1])[1:-1].replace('""', '"'))
+            i = close + 1
+    return out
+
+
 class Reader:
     """
     Reader class is the main parser for xer files. It takes a file path as a parameter.
@@ -386,17 +418,16 @@ class Reader:
         self._data.predecessors = self._predecessors
         with open(filename, "rb") as fh:
             text = _decode_xer_bytes(fh.read())
-        # Structural policy: field-count variance in data rows is tolerated (zip,
-        # like the original parser) -- a short row leaves trailing columns unset,
-        # a long row drops the surplus. We fail loud only on a genuinely malformed
-        # value (create_object) or an unroutable %T; a missing %E end marker sets
-        # the soft truncated flag.
+        # Structural policy: a short row leaves trailing columns unset; a long row
+        # gets P6's quoted tab values rejoined and fails loud if still too long.
+        # A malformed value or unroutable %T also fails loud; a missing %E end
+        # marker sets the soft truncated flag.
         saw_end_marker = False
         current_table = ""
         current_headers = []
-        # XER is plain TSV with no quoting convention; QUOTE_NONE stops a value
-        # that contains a `"` from being read as a quoted field and silently
-        # swallowing following rows. newline="" lets csv handle line endings.
+        # QUOTE_NONE: a stray `"` must never swallow following rows; P6's quoted
+        # tab values are rejoined per row instead. newline="" lets csv handle
+        # line endings.
         stream = csv.reader(
             io.StringIO(text, newline=""), delimiter="\t", quoting=csv.QUOTE_NONE
         )
@@ -425,7 +456,17 @@ class Reader:
                     raise XerParseError(
                         "ragged_row", "data row before %F header", current_table, stream.line_num
                     )
-                zipped_record = dict(zip(current_headers, row[1:]))
+                values = row[1:]
+                if len(values) > len(current_headers):
+                    values = _rejoin_quoted_values(values, len(current_headers))
+                if len(values) > len(current_headers):
+                    raise XerParseError(
+                        "ragged_row",
+                        f"expected {len(current_headers)} fields, got {len(values)}",
+                        current_table,
+                        stream.line_num,
+                    )
+                zipped_record = dict(zip(current_headers, values))
                 try:
                     self.create_object(current_table, zipped_record)
                 except Exception as e:

@@ -3,8 +3,8 @@
 Two axes:
   1. Decode-safe encoding ladder (no character is ever silently deleted).
   2. Fail-loud typed errors for a malformed value or unroutable structure, a
-     soft truncated flag for a file cut before %E, and tolerance of benign
-     field-count variance (short/long rows) like the original parser.
+     soft truncated flag for a file cut before %E, tolerance of short rows,
+     and rejoining of P6's quoted tab-containing values on long rows.
 
 Fixtures under tests/fixtures/ are byte-identical to the MRE-side IT-2 corpus.
 """
@@ -61,15 +61,44 @@ def test_ftb3_bad_row_raises_malformed():
     assert exc.value.line  # a concrete line number, not None
 
 
-@pytest.mark.parametrize("name", ["struct_ragged_short.xer", "struct_ragged_long.xer"])
-def test_ftb4_field_count_variance_tolerated(name):
-    """A row with fewer/more fields than its %F header is tolerated like the
-    original zip-based parser: a short row leaves trailing columns unset, a long
-    row drops the surplus. It neither raises nor flags an otherwise-complete
-    file as truncated."""
-    reader = Reader(fixture(name))
+def test_ftb4_short_row_tolerated():
+    """A row with fewer fields than its %F header is tolerated like the original
+    zip-based parser: trailing columns stay unset and the file is not flagged
+    truncated."""
+    reader = Reader(fixture("struct_ragged_short.xer"))
     assert len(list(reader.activities)) > 0
     assert reader.truncated is False
+
+
+def test_ftb4_long_row_raises_field_count():
+    """A row longer than its %F header with no quoted span to rejoin fails with
+    a field-count error naming table, line and counts, not a conversion error."""
+    with pytest.raises(XerParseError) as exc:
+        Reader(fixture("struct_ragged_long.xer"))
+    assert exc.value.kind == "ragged_row"
+    assert exc.value.table == "TASK"
+    assert exc.value.line == 83
+    assert "expected 60 fields, got 61" in str(exc.value)
+
+
+def test_ftb4_quoted_tab_value_rejoined(tmp_path):
+    """P6 wraps a value containing a tab in double quotes and doubles inner
+    quotes. On a too-long row that span is rejoined so later columns stay
+    aligned; a row matching its header keeps a bare `""` untouched."""
+    content = (
+        "ERMHDR\t22.12\t2024-07-29\tProject\n"
+        "%T\tTASK\n"
+        "%F\ttask_id\ttask_code\ttask_name\ttarget_drtn_hr_cnt\n"
+        '%R\t1\tA1\t"Pump\tA ""hot"" test"\t8\n'
+        '%R\t2\tA2\tSay ""hi""\t4\n'
+        "%E\n"
+    )
+    path = tmp_path / "quoted_tab.xer"
+    path.write_text(content, encoding="utf-8")
+    tasks = {t.task_code: t for t in Reader(str(path)).activities}
+    assert tasks["A1"].task_name == 'Pump\tA "hot" test'
+    assert tasks["A1"].target_drtn_hr_cnt == 8.0
+    assert tasks["A2"].task_name == 'Say ""hi""'
 
 
 def test_ftb5_truncated_sets_flag_and_keeps_rows():
