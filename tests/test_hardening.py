@@ -84,13 +84,15 @@ def test_ftb4_long_row_raises_field_count():
 def test_ftb4_quoted_tab_value_rejoined(tmp_path):
     """P6 wraps a value containing a tab in double quotes and doubles inner
     quotes. On a too-long row that span is rejoined so later columns stay
-    aligned; a row matching its header keeps a bare `""` untouched."""
+    aligned; an unwrapped value with a stray quote is never taken for a span,
+    and a row matching its header keeps a bare `""` untouched."""
     content = (
         "ERMHDR\t22.12\t2024-07-29\tProject\n"
         "%T\tTASK\n"
-        "%F\ttask_id\ttask_code\ttask_name\ttarget_drtn_hr_cnt\n"
-        '%R\t1\tA1\t"Pump\tA ""hot"" test"\t8\n'
-        '%R\t2\tA2\tSay ""hi""\t4\n'
+        "%F\ttask_id\ttask_code\ttask_name\tcstr_type\tcstr_type2\ttarget_drtn_hr_cnt\n"
+        '%R\t1\tA1\t"Pump\tA ""hot"" test"\t\t\t8\n'
+        '%R\t2\tA2\tSay ""hi""\t\t\t4\n'
+        '%R\t3\tA3\t"A" train\t6"\t"x\ty"\t2\n'
         "%E\n"
     )
     path = tmp_path / "quoted_tab.xer"
@@ -99,6 +101,9 @@ def test_ftb4_quoted_tab_value_rejoined(tmp_path):
     assert tasks["A1"].task_name == 'Pump\tA "hot" test'
     assert tasks["A1"].target_drtn_hr_cnt == 8.0
     assert tasks["A2"].task_name == 'Say ""hi""'
+    assert tasks["A3"].task_name == '"A" train'
+    assert tasks["A3"].cstr_type == '6"'
+    assert tasks["A3"].cstr_type2 == "x\ty"
 
 
 def test_ftb5_truncated_sets_flag_and_keeps_rows():

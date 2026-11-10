@@ -110,31 +110,31 @@ def _decode_xer_bytes(raw: bytes) -> str:
         return raw.decode("cp1252", errors="replace")
 
 
-def _quote_run(text: str, from_end: bool = False) -> int:
-    stripped = text.rstrip('"') if from_end else text.lstrip('"')
-    return len(text) - len(stripped)
+def _is_wrapped(span: str) -> bool:
+    return (
+        len(span) >= 2
+        and span[0] == span[-1] == '"'
+        and '"' not in span[1:-1].replace('""', "")
+    )
 
 
 def _rejoin_quoted_values(values: List[str], expected: int) -> List[str]:
     """Rejoin P6's quote-wrapped, tab-containing values that a tab split cut apart.
 
-    P6 wraps only tab-containing text in quotes and doubles inner quotes, so an
-    odd quote run opens or closes a wrapped span; an even run is literal text.
-    A span may only absorb as many pieces as the row has surplus fields.
+    A span may absorb only as many pieces as the row has surplus fields.
     """
     out: List[str] = []
     i = 0
     while i < len(values):
         surplus = (len(values) - i) - (expected - len(out))
-        piece = values[i]
         close = None
-        if surplus > 0 and _quote_run(piece) % 2 == 1:
+        if surplus > 0 and values[i].startswith('"'):
             for j in range(i + 1, min(i + surplus, len(values) - 1) + 1):
-                if _quote_run(values[j], from_end=True) % 2 == 1:
+                if _is_wrapped("\t".join(values[i : j + 1])):
                     close = j
                     break
         if close is None:
-            out.append(piece)
+            out.append(values[i])
             i += 1
         else:
             out.append("\t".join(values[i : close + 1])[1:-1].replace('""', '"'))
@@ -418,10 +418,8 @@ class Reader:
         self._data.predecessors = self._predecessors
         with open(filename, "rb") as fh:
             text = _decode_xer_bytes(fh.read())
-        # Structural policy: a short row leaves trailing columns unset; a long row
-        # gets P6's quoted tab values rejoined and fails loud if still too long.
-        # A malformed value or unroutable %T also fails loud; a missing %E end
-        # marker sets the soft truncated flag.
+        # A short row leaves trailing columns unset; a long row that rejoining
+        # can't fix fails loud, as do malformed values. No %E sets `truncated`.
         saw_end_marker = False
         current_table = ""
         current_headers = []
